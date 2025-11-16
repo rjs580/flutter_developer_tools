@@ -1,0 +1,41 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>dev.rutvik.flutter_developer_tools.flutter_developer_tools</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
+    <name>Flutter Developer Tools</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor url="https://rutvik.dev">Rutvik Dev</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
+    <description><![CDATA[
+    <h2>Advanced Pubspec.yaml Intelligence for Flutter & Dart</h2>
+    ]]></description>
+
+    <change-notes><![CDATA[
+    <h3>Version 1.0.0</h3>
+    <ul>
+        <li>Initial release with full pubspec.yaml intelligence</li>
+    </ul>
+    ]]></change-notes>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.yaml</depends>
+    <depends>io.flutter</depends>
+    <depends>Dart</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Pub Package Completion -->
+        <completion.contributor
+                language="yaml"
+                implementationClass="dev.rutvik.flutter_developer_tools.pubspec.completions.PubPackageCompletionContributor"/>
+    </extensions>
+</idea-plugin>

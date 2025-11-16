@@ -1,0 +1,14 @@
+<ivy-module version="2.0">
+  <info organisation="bundledPlugin" module="org.jetbrains.plugins.yaml" revision="IC-251.27812.49"/>
+  <configurations>
+    <conf name="default" visibility="public"/>
+  </configurations>
+  <publications>
+    <artifact name="yaml" ext="jar" conf="default" url="plugins/yaml/lib"/>
+    <artifact name="intellij.yaml.backend" ext="jar" conf="default" url="plugins/yaml/lib/modules"/>
+    <artifact name="intellij.yaml.frontend.split" ext="jar" conf="default" url="plugins/yaml/lib/modules"/>
+  </publications>
+  <dependencies>
+    <dependency org="bundledModule" name="intellij.json.split" rev="IC-251.27812.49"/>
+  </dependencies>
+</ivy-module>
