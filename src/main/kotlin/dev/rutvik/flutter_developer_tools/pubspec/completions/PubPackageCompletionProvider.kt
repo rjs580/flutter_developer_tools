@@ -11,7 +11,7 @@ import dev.rutvik.flutter_developer_tools.api.PubDevApi
 import dev.rutvik.flutter_developer_tools.models.PubPackage
 import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 import dev.rutvik.flutter_developer_tools.pubspec.ui.PackageLookupRenderer
-import dev.rutvik.flutter_developer_tools.pubspec.utils.PubspecUtils
+import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
 
 /**
  * Provides code completion for pub.dev packages in pubspec.yaml files.

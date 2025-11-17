@@ -4,8 +4,8 @@ import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.psi.PsiElement
-import dev.rutvik.flutter_developer_tools.pubspec.utils.PubspecUtils
-import dev.rutvik.flutter_developer_tools.pubspec.utils.PubspecUtils.isPubPackageName
+import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
+import dev.rutvik.flutter_developer_tools.utils.PubspecUtils.isPubPackageName
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
 

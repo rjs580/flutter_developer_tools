@@ -1,4 +1,4 @@
-package dev.rutvik.flutter_developer_tools.pubspec.utils
+package dev.rutvik.flutter_developer_tools.utils
 
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
