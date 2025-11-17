@@ -1,7 +1,7 @@
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.1.0"
-    id("org.jetbrains.intellij.platform") version "2.7.1"
+    id("org.jetbrains.intellij.platform") version "2.10.4"
 }
 
 group = "dev.rutvik.flutter_developer_tools"
@@ -41,6 +41,8 @@ intellijPlatform {
             Initial version
         """.trimIndent()
     }
+
+    buildSearchableOptions = false
 }
 
 tasks {

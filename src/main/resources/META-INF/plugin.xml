@@ -1,5 +1,5 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
-<idea-plugin>
+<idea-plugin require-restart="true">
     <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
     <id>dev.rutvik.flutter_developer_tools.flutter_developer_tools</id>
 
@@ -33,9 +33,25 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
+        <!-- Notification Group -->
+        <notificationGroup
+                id="Flutter Developer Tools"
+                displayType="BALLOON"/>
+
+        <!-- Application Services -->
+        <applicationService
+                serviceImplementation="dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService"/>
+
         <!-- Pub Package Completion -->
         <completion.contributor
                 language="yaml"
+                order="first"
                 implementationClass="dev.rutvik.flutter_developer_tools.pubspec.completions.PubPackageCompletionContributor"/>
     </extensions>
+
+    <applicationListeners>
+        <listener
+                class="dev.rutvik.flutter_developer_tools.startup.StartupPreloader"
+                topic="com.intellij.ide.AppLifecycleListener"/>
+    </applicationListeners>
 </idea-plugin>

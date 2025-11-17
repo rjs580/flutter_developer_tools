@@ -1,11 +1,22 @@
 package dev.rutvik.flutter_developer_tools.pubspec.models
 
 data class PubPackage(
-    val name: String,
-    val latest: String,
-    val description: String?,
-    val isFlutterFavorite: Boolean = false,
-    val likes: Int = 0,
-    val pubPoints: Int = 0
-)
+    var name: String = "",
+    var latestVersion: String? = null,
+    var description: String? = null,
+    var isFlutterFavorite: Boolean? = null,
+    var likes: Int? = null,
+    var pubPoints: Int? = null
+) {
+    companion object {
+        fun withName(name: String) = PubPackage(
+            name = name,
+            latestVersion = null,
+            description = null,
+            isFlutterFavorite = null,
+            likes = null,
+            pubPoints = null
+        )
+    }
+}
 
