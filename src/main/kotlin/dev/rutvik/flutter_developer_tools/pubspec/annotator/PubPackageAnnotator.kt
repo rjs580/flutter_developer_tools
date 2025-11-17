@@ -3,12 +3,7 @@ package dev.rutvik.flutter_developer_tools.pubspec.annotator
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.HighlightSeverity
-import com.intellij.openapi.actionSystem.IdeActions
-import com.intellij.openapi.keymap.KeymapManager
-import com.intellij.openapi.keymap.KeymapUtil
-import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
-import com.intellij.util.containers.ContainerUtil
 import dev.rutvik.flutter_developer_tools.pubspec.utils.PubspecUtils
 import dev.rutvik.flutter_developer_tools.pubspec.utils.PubspecUtils.isPubPackageName
 import org.jetbrains.yaml.psi.YAMLKeyValue
@@ -37,10 +32,8 @@ class PubPackageAnnotator : Annotator {
 
         if (!PubspecUtils.isPubDevPackage(yamlKv)) return
 
-        val message = getShortcutMessage(holder)
-
         yamlKv.key?.let { keyElement ->
-            holder.newAnnotation(HighlightSeverity.INFORMATION, message)
+            holder.newAnnotation(HighlightSeverity.INFORMATION, "")
                 .range(keyElement)
                 .create()
         }
@@ -60,28 +53,8 @@ class PubPackageAnnotator : Annotator {
         val versionText = yamlScalar.textValue
         if (!PubspecUtils.isSimpleVersion(versionText)) return
 
-        val message = getShortcutMessage(holder)
-
-        holder.newAnnotation(HighlightSeverity.INFORMATION, message)
+        holder.newAnnotation(HighlightSeverity.INFORMATION, "")
             .range(yamlScalar)
             .create()
     }
-
-    private fun getShortcutMessage(holder: AnnotationHolder): String {
-        return holder.currentAnnotationSession.getUserData(MESSAGE_KEY) ?: run {
-            val message = buildShortcutMessage()
-            holder.currentAnnotationSession.putUserData(MESSAGE_KEY, message)
-            message
-        }
-    }
-
-    private fun buildShortcutMessage(): String {
-        val shortcuts = KeymapManager.getInstance().activeKeymap.getShortcuts(IdeActions.ACTION_QUICK_JAVADOC)
-        return ContainerUtil.find(shortcuts) { it.isKeyboard }?.let { keyboardShortcut ->
-            val shortcutText = KeymapUtil.getShortcutText(keyboardShortcut)
-            "Press $shortcutText to open full documentation"
-        } ?: "Open full documentation"
-    }
 }
-
-private val MESSAGE_KEY = Key.create<String>("pub.package.hyperlink.message")

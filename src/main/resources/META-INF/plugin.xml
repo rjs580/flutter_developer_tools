@@ -14,12 +14,19 @@
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
     <h2>Advanced Pubspec.yaml Intelligence for Flutter & Dart</h2>
+    <p>Features:</p>
+    <ul>
+        <li>Smart auto-complete for pub.dev packages showing Flutter favorites and likes count</li>
+        <li>Package names and versions can be opened on pub.dev using CMD+click (or similar)</li>
+    </ul>
     ]]></description>
 
     <change-notes><![CDATA[
     <h3>Version 1.0.0</h3>
     <ul>
-        <li>Initial release with full pubspec.yaml intelligence</li>
+        <li>Initial release</li>
+        <li>Added package auto-completion with Flutter favorites and likes</li>
+        <li>Added hyperlink support to open packages on pub.dev</li>
     </ul>
     ]]></change-notes>
 
