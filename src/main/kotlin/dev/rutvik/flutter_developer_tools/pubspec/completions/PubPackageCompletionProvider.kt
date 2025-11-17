@@ -17,7 +17,7 @@ import org.jetbrains.yaml.psi.YAMLMapping
 class PubPackageCompletionProvider : CompletionProvider<CompletionParameters>() {
 
     override fun addCompletions(params: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
-        val project = params.editor.project ?: return
+        params.editor.project ?: return
 
         val position = params.position
         if (!isInDependenciesSection(position)) {
@@ -26,42 +26,31 @@ class PubPackageCompletionProvider : CompletionProvider<CompletionParameters>() 
 
         val cache = PubPackageCacheService.getInstance()
 
-        // Check if cache has packages
-        if (cache.packages.isEmpty()) {
-            return
-        }
-
-        // Restart completion on any prefix change for better responsiveness
-        result.restartCompletionOnAnyPrefixChange()
+        // Early exit when memory cache is not loaded
+        if (!cache.isMemoryCacheLoaded()) return
 
         // Get prefix for filtering
         val prefix = result.prefixMatcher.prefix.lowercase()
 
-        // Filter packages by prefix and sort by priority
-        val matchingPackages = cache.packages.keys
-            .filter { it.lowercase().startsWith(prefix) }
-            .map { name ->
-                val pkg = cache.getInfo(name)
-                name to calculatePriority(pkg)
-            }
-            .sortedByDescending { it.second }
-
-        // Get top 5 for detailed rendering
-        val top5Names = matchingPackages.take(5).map { it.first }.toSet()
+        if (prefix.isEmpty()) return
+        
+        // Search packages matching the prefix
+        // This will ensure memory cache is loaded and return filtered results
+        val matchingPackages = cache.searchPackages(prefix, 25)
 
         // Add advertisement at the bottom of the completion popup
-        result.addLookupAdvertisement("Packages from pub.dev • Top ${top5Names.size} shown with details")
+        result.addLookupAdvertisement("Results from pub.dev • Last updated ${cache.lastPackageListUpdate}")
 
-        for ((name, priority) in matchingPackages) {
-            // Only fetch details for top 5
-            if (top5Names.contains(name)) {
-                PubDevApi.requestDetailsIfNeeded(name) { info ->
-                    cache.updateDetails(info)
-                }
+        for (pkg in matchingPackages) {
+            val name = pkg.name
+            val priority = calculatePriority(pkg, prefix)
+
+            PubDevApi.requestDetailsIfNeeded(name) { info ->
+                cache.updateDetails(info)
             }
 
             val element =  LookupElementBuilder.create(name)
-                .withInsertHandler { context, item ->
+                .withInsertHandler { insertContext, _ ->
                     // Custom insertion logic
                     val version = cache.getInfo(name)?.latestVersion
                     val insertString = if (version != null) {
@@ -71,13 +60,13 @@ class PubPackageCompletionProvider : CompletionProvider<CompletionParameters>() 
                     }
 
                     // Replace with the correct string
-                    context.document.replaceString(
-                        context.startOffset,
-                        context.tailOffset,
+                    insertContext.document.replaceString(
+                        insertContext.startOffset,
+                        insertContext.tailOffset,
                         insertString
                     )
                 }
-                .withRenderer(PackageLookupRenderer(name, top5Names.contains(name)))
+                .withRenderer(PackageLookupRenderer(name))
 
             // Wrap with priority to show above other suggestions
             val prioritizedElement = PrioritizedLookupElement.withPriority(element, priority)
@@ -91,19 +80,30 @@ class PubPackageCompletionProvider : CompletionProvider<CompletionParameters>() 
         }
     }
 
-    private fun calculatePriority(pkg: PubPackage?): Double {
+    private fun calculatePriority(pkg: PubPackage?, prefix: String): Double {
         var priority = 0.0
 
-        if (pkg?.isFlutterFavorite == true) {
-            priority += 1000.0
+        // Strongly prefer exact/prefix matches over popularity
+        pkg?.name?.let { name ->
+            priority += when {
+                name.equals(prefix, ignoreCase = true) -> 1000000.0  // Exact match
+                name.startsWith(prefix, ignoreCase = true) -> 500000.0  // Prefix match
+                else -> 100000.0  // Contains match - still higher than max popularity
+            }
         }
 
-        pkg?.likes?.times(0.6)?.let { priority += it }
-        pkg?.pubPoints?.times(0.4)?.let { priority += it }
+        // Only apply popularity bonus if details are loaded
+        if (pkg?.likes != null || pkg?.pubPoints != null) {
+            if (pkg.isFlutterFavorite == true) {
+                priority += 10000.0
+            }
+
+            pkg.likes?.times(0.6)?.let { priority += it }
+            pkg.pubPoints?.times(0.4)?.let { priority += it }
+        }
 
         return priority
     }
-
 
     private fun isInDependenciesSection(element: PsiElement): Boolean {
         var parent: PsiElement? = element.parent

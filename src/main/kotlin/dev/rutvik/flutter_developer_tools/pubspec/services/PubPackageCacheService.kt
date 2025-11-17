@@ -6,58 +6,164 @@ import dev.rutvik.flutter_developer_tools.pubspec.models.PackageCacheState
 import dev.rutvik.flutter_developer_tools.pubspec.models.PubPackage
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.Volatile
 
+/**
+ * Service for caching pub.dev package information.
+ * Provides both in-memory and persistent storage capabilities with lazy loading.
+ */
 @State(
     name = "PubPackageCacheService",
-    storages = [Storage(StoragePathMacros.CACHE_FILE)]
+    storages = [Storage("pubPackageCache.xml", roamingType = RoamingType.DISABLED)]
 )
 @Service(Service.Level.APP)
 class PubPackageCacheService : PersistentStateComponent<PackageCacheState> {
     private var _state = PackageCacheState()
-    val packages = ConcurrentHashMap<String, PubPackage>()
+
+    /** In-memory cache that is lazily loaded */
+    private val memoryCache = ConcurrentHashMap<String, PubPackage>()
+
+    /** Counter for tracking active pubspec.yaml editors */
+    private val activeEditors = AtomicInteger(0)
+
+    @Volatile
+    private var isMemoryCacheLoaded = false
+
+    @Volatile
+    private var pendingSave = false
+
     private val saveLock = Any()
 
+    val lastPackageListUpdate: String
+        get() = formatTimestamp(_state.lastPackageListUpdate)
+
     companion object {
-        private const val PACKAGE_DETAILS_TTL_SECONDS = 5 * 60 // 5 minutes
+        /** TTL for package details cache (5 minutes) */
+        private const val PACKAGE_DETAILS_TTL_SECONDS = 5L * 60L
 
         fun getInstance(): PubPackageCacheService =
             ApplicationManager.getApplication().getService(PubPackageCacheService::class.java)
     }
 
-    override fun getState(): PackageCacheState = _state
-
-    override fun loadState(state: PackageCacheState) {
-        _state = state
-        packages.clear()
-        state.packages.forEach { packages[it.name] = it }
-    }
-
-    // ---- PACKAGE NAMES ----
-
-    fun updatePackageListTimestamp() {
+    override fun getState(): PackageCacheState {
         synchronized(saveLock) {
-            _state.lastPackageListUpdate = Instant.now().epochSecond
-            save()
+            // Only persist to disk, don't keep everything in state
+            return _state.copy()
         }
     }
 
+    override fun loadState(state: PackageCacheState) {
+        synchronized(saveLock) {
+            _state = state
+            // Don't load into memory yet - wait for demand
+            memoryCache.clear()
+            isMemoryCacheLoaded = false
+        }
+    }
+
+    override fun noStateLoaded() {
+        synchronized(saveLock) {
+            _state = PackageCacheState()
+            memoryCache.clear()
+            isMemoryCacheLoaded = false
+        }
+    }
+
+    /** Called when a pubspec.yaml file is opened */
+    fun onPubspecOpened() {
+        activeEditors.incrementAndGet()
+        ensureMemoryCacheLoaded()
+    }
+
+    /** Called when a pubspec.yaml file is closed */
+    fun onPubspecClosed() {
+        val count = activeEditors.decrementAndGet()
+        if (count <= 0) {
+            // Schedule unload after a delay (grace period for quick reopens)
+            ApplicationManager.getApplication().executeOnPooledThread {
+                Thread.sleep(30_000) // 30 seconds grace period
+                if (activeEditors.get() <= 0) {
+                    unloadMemoryCache()
+                }
+            }
+        }
+    }
+
+    /** Loads packages from persistent state into memory */
+    private fun ensureMemoryCacheLoaded() {
+        if (isMemoryCacheLoaded) return
+
+        synchronized(saveLock) {
+            if (isMemoryCacheLoaded) return
+
+            memoryCache.clear()
+            memoryCache.putAll(_state.packages.associateBy { it.name })
+            isMemoryCacheLoaded = true
+        }
+    }
+
+    /** Clears in-memory cache while keeping disk storage intact */
+    private fun unloadMemoryCache() {
+        synchronized(saveLock) {
+            if (!isMemoryCacheLoaded) return
+
+            memoryCache.clear()
+            isMemoryCacheLoaded = false
+        }
+    }
+
+    fun isMemoryCacheLoaded(): Boolean = isMemoryCacheLoaded
+
+    /** Formats a timestamp into a human readable string */
+    private fun formatTimestamp(timestamp: Long): String {
+        if (timestamp == 0L) return "never"
+
+        val now = System.currentTimeMillis() / 1000L
+        val diff = now - timestamp
+
+        return when {
+            diff < 60 -> "just now"
+            diff < 3600 -> "${diff / 60} minutes ago"
+            diff < 86400 -> "${diff / 3600} hours ago"
+            diff < 604800 -> "${diff / 86400} days ago"
+            diff < 2592000 -> "${diff / 604800} weeks ago"
+            else -> "${diff / 2592000} months ago"
+        }
+    }
+
+    /** Updates the timestamp of last package list update */
+    fun updatePackageListTimestamp() {
+        synchronized(saveLock) {
+            _state.lastPackageListUpdate = Instant.now().epochSecond
+            saveToDisk()
+        }
+    }
+
+    /** Adds new package names to both persistent and memory cache */
     fun addPackageNames(names: List<String>) {
         synchronized(saveLock) {
             var changed = false
             names.forEach { name ->
-                if (!packages.containsKey(name)) {
-                    packages[name] = PubPackage.withName(name)
+                // Always update persistent state
+                val existsInState = _state.packages.any { it.name == name }
+                if (!existsInState) {
+                    _state.packages += PubPackage.withName(name)
                     changed = true
+                }
+
+                // Update memory cache only if loaded
+                if (isMemoryCacheLoaded && !memoryCache.containsKey(name)) {
+                    memoryCache[name] = PubPackage.withName(name)
                 }
             }
             if (changed) {
-                save()
+                saveToDisk()
             }
         }
     }
 
-    // ---- PACKAGE DETAILS ----
-
+    /** Checks if package details need to be refetched based on TTL */
     fun shouldRefetchDetails(packageName: String): Boolean {
         val ts = _state.packageDetailsTimestamps[packageName] ?: return true
 
@@ -65,18 +171,96 @@ class PubPackageCacheService : PersistentStateComponent<PackageCacheState> {
         return (now - ts) > PACKAGE_DETAILS_TTL_SECONDS
     }
 
+    /** Updates package details in both persistent and memory cache */
     fun updateDetails(info: PubPackage) {
+        // Update memory cache immediately without lock (it's a ConcurrentHashMap)
+        if (isMemoryCacheLoaded) {
+            memoryCache[info.name] = info
+        }
+
+        // Update persistent state with minimal lock time
         synchronized(saveLock) {
-            packages[info.name] = info
+            val index = _state.packages.indexOfFirst { it.name == info.name }
+            if (index >= 0) {
+                val mutable = _state.packages.toMutableList()
+                mutable[index] = info
+                _state.packages = mutable
+            } else {
+                _state.packages += info
+            }
+
             _state.packageDetailsTimestamps[info.name] = Instant.now().epochSecond
-            save()
+        }
+
+        // Save to disk asynchronously and debounced (don't block)
+        scheduleDebouncedSave()
+    }
+
+    /** Retrieves package info from cache */
+    fun getInfo(name: String): PubPackage? {
+        // Try memory cache first if loaded
+        if (isMemoryCacheLoaded) {
+            return memoryCache[name]
+        }
+
+        // Otherwise search in persistent state (slower, but avoids loading everything)
+        synchronized(saveLock) {
+            return _state.packages.find { it.name == name }
         }
     }
 
-    fun getInfo(name: String): PubPackage? = packages[name]
+    /** Searches packages by name with fuzzy matching */
+    fun searchPackages(query: String, limit: Int = 50): List<PubPackage> {
+        ensureMemoryCacheLoaded() // Need memory for fast search
 
-    private fun save() {
-        _state.packages = packages.values.toList()
-        ApplicationManager.getApplication().saveSettings()
+        return memoryCache.values
+            .filter { it.name.contains(query, ignoreCase = true) }
+            .sortedWith(compareBy<PubPackage>
+            // Primary sort: match quality
+            { pkg ->
+                when {
+                    pkg.name.equals(query, ignoreCase = true) -> 0  // Exact match
+                    pkg.name.startsWith(query, ignoreCase = true) -> 1  // Starts with
+                    else -> 2  // Contains
+                }
+            }.thenByDescending { pkg ->
+                // Secondary sort: popularity first (likes + flutter favorite bonus)
+                var score = (pkg.likes ?: 0)
+                if (pkg.isFlutterFavorite == true) score += 10000
+                score
+            })
+            .take(limit)
+            .toList()
+    }
+
+    /** Clears all cached data */
+    fun clearAll() {
+        synchronized(saveLock) {
+            _state.packages = emptyList()
+            _state.lastPackageListUpdate = 0L
+            _state.packageDetailsTimestamps.clear()
+            memoryCache.clear()
+            isMemoryCacheLoaded = false
+            saveToDisk()
+        }
+    }
+
+    /** Schedules a debounced save to avoid saving on every detail update */
+    private fun scheduleDebouncedSave() {
+        if (pendingSave) return
+
+        pendingSave = true
+        ApplicationManager.getApplication().executeOnPooledThread {
+            Thread.sleep(2000) // Wait 2 seconds to batch multiple updates
+            pendingSave = false
+            saveToDisk()
+        }
+    }
+
+    /** Persists current state to disk */
+    private fun saveToDisk() {
+        ApplicationManager.getApplication().invokeLater {
+            ApplicationManager.getApplication().saveSettings()
+        }
     }
 }

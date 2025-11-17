@@ -11,11 +11,11 @@ import dev.rutvik.flutter_developer_tools.pubspec.api.PubDevApi
 import dev.rutvik.flutter_developer_tools.pubspec.models.PubPackage
 import dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService
 
-class PackageLookupRenderer(private val packageName: String, private val top5: Boolean) : LookupElementRenderer<LookupElement>() {
+class PackageLookupRenderer(private val packageName: String) : LookupElementRenderer<LookupElement>() {
     override fun renderElement(element: LookupElement, presentation: LookupElementPresentation) {
         val cache = PubPackageCacheService.getInstance()
 
-        val info = if (top5) cache.getInfo(packageName) else null
+        val info = cache.getInfo(packageName)
 
         if (info?.latestVersion == null) {
             presentation.itemText = "$packageName:"

@@ -28,7 +28,10 @@ object PubDevApi {
                 
                 cache.addPackageNames(array)
 
-                callback()
+                // Invoke callback on EDT to prevent UI threading issues
+                ApplicationManager.getApplication().invokeLater {
+                    callback()
+                }
             } catch (e: Exception) {
                 log.warn("Failed to fetch package names", e)
             }
@@ -78,37 +81,14 @@ object PubDevApi {
                     val tags = jsonScore.getAsJsonArray("tags")?.map { it.asString } ?: emptyList()
                     val isFlutterFavorite = tags.contains("is:flutter-favorite")
 
-                    callback(PubPackage(name, latestVersion, description, isFlutterFavorite, likes, pubPoints))
+                    // Invoke callback on EDT to prevent UI threading issues
+                    ApplicationManager.getApplication().invokeLater {
+                        callback(PubPackage(name, latestVersion, description, isFlutterFavorite, likes, pubPoints))
+                    }
                 }
             } catch (e: Exception) {
                 log.warn("Failed to fetch details for $name", e)
             }
-        }
-    }
-
-    fun fetchPubPackage(name: String): PubPackage? {
-        return try {
-            val details = HttpRequests.request("https://pub.dev/api/packages/$name")
-                .connect { it.readString() }
-            val score = HttpRequests.request("https://pub.dev/api/packages/$name/score")
-                .connect { it.readString() }
-
-            val jsonDetails = JsonParser.parseString(details).asJsonObject
-            val latestDetails = jsonDetails["latest"].asJsonObject
-            val latestVersion = latestDetails["version"].asString
-            val description = latestDetails["pubspec"].asJsonObject["description"].asString
-
-            val jsonScore = JsonParser.parseString(score).asJsonObject
-            val likes = jsonScore["likeCount"]?.asInt ?: 0
-            val pubPoints = jsonScore["grantedPoints"]?.asInt ?: 0
-
-            val tags = jsonScore.getAsJsonArray("tags")?.map { it.asString } ?: emptyList()
-            val isFlutterFavorite = tags.contains("is:flutter-favorite")
-
-            PubPackage(name, latestVersion, description, isFlutterFavorite, likes, pubPoints)
-        } catch (e: Exception) {
-            log.warn("Failed to fetch details for $name", e)
-            null
         }
     }
 }

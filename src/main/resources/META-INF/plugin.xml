@@ -47,11 +47,17 @@
                 language="yaml"
                 order="first"
                 implementationClass="dev.rutvik.flutter_developer_tools.pubspec.completions.PubPackageCompletionContributor"/>
+
+        <!-- Cache invalidators -->
+        <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>
     </extensions>
 
     <applicationListeners>
         <listener
                 class="dev.rutvik.flutter_developer_tools.startup.StartupPreloader"
                 topic="com.intellij.ide.AppLifecycleListener"/>
+
+        <listener class="dev.rutvik.flutter_developer_tools.listeners.PubspecFileListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
     </applicationListeners>
 </idea-plugin>

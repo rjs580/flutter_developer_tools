@@ -19,19 +19,18 @@ class StartupPreloader : AppLifecycleListener {
 
             // Fetch if never updated OR if the cache is stale
             if (lastUpdate == 0L) {
-                // First time - fetch the package list
+                // First time - fetch and save to disk
                 PubDevApi.fetchPackageNames {
                     cache.updatePackageListTimestamp()
                 }
             } else {
                 val age = now - lastUpdate
                 if (age > PACKAGE_LIST_TTL_SECONDS) {
-                    // Cache is stale - refetch
+                    // Cache is stale - refetch and save to disk
                     PubDevApi.fetchPackageNames {
                         cache.updatePackageListTimestamp()
                     }
                 }
-                // If age <= PACKAGE_LIST_TTL_SECONDS, cache is still fresh - skip fetch
             }
         }
     }
