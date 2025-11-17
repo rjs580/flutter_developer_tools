@@ -1,4 +1,4 @@
-package dev.rutvik.flutter_developer_tools.pubspec.models
+package dev.rutvik.flutter_developer_tools.models
 
 data class PubPackage(
     var name: String = "",

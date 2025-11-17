@@ -1,3 +1,4 @@
+
 package dev.rutvik.flutter_developer_tools.pubspec.completions
 
 import com.intellij.codeInsight.completion.CompletionParameters
@@ -5,22 +6,36 @@ import com.intellij.codeInsight.completion.CompletionProvider
 import com.intellij.codeInsight.completion.CompletionResultSet
 import com.intellij.codeInsight.completion.PrioritizedLookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
-import com.intellij.psi.PsiElement
 import com.intellij.util.ProcessingContext
-import dev.rutvik.flutter_developer_tools.pubspec.api.PubDevApi
-import dev.rutvik.flutter_developer_tools.pubspec.models.PubPackage
-import dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService
+import dev.rutvik.flutter_developer_tools.api.PubDevApi
+import dev.rutvik.flutter_developer_tools.models.PubPackage
+import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 import dev.rutvik.flutter_developer_tools.pubspec.ui.PackageLookupRenderer
-import org.jetbrains.yaml.psi.YAMLKeyValue
-import org.jetbrains.yaml.psi.YAMLMapping
+import dev.rutvik.flutter_developer_tools.pubspec.utils.PubspecUtils
 
+/**
+ * Provides code completion for pub.dev packages in pubspec.yaml files.
+ *
+ * This completion provider:
+ * - Activates within dependencies/dev_dependencies sections
+ * - Fetches package suggestions from pub.dev cache
+ * - Displays package details like version, likes and pub points
+ * - Automatically inserts latest version when completing a package
+ * - Prioritizes results based on exact matches and package popularity
+ */
 class PubPackageCompletionProvider : CompletionProvider<CompletionParameters>() {
 
     override fun addCompletions(params: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
         params.editor.project ?: return
 
         val position = params.position
-        if (!isInDependenciesSection(position)) {
+
+        // Check if we're in a pubspec.yaml file and within a dependency section
+        if (!PubspecUtils.isPubspecFile(position.containingFile)) {
+            return
+        }
+
+        if (!PubspecUtils.isElementInDependencySection(position)) {
             return
         }
 
@@ -33,7 +48,7 @@ class PubPackageCompletionProvider : CompletionProvider<CompletionParameters>() 
         val prefix = result.prefixMatcher.prefix.lowercase()
 
         if (prefix.isEmpty()) return
-        
+
         // Search packages matching the prefix
         // This will ensure memory cache is loaded and return filtered results
         val matchingPackages = cache.searchPackages(prefix, 25)
@@ -103,33 +118,5 @@ class PubPackageCompletionProvider : CompletionProvider<CompletionParameters>() 
         }
 
         return priority
-    }
-
-    private fun isInDependenciesSection(element: PsiElement): Boolean {
-        var parent: PsiElement? = element.parent
-        var depth = 0
-
-        while (parent != null && depth < 10) {
-            if (parent is YAMLKeyValue) {
-                val key = parent.keyText
-                if (key == "dependencies" || key == "dev_dependencies") {
-                    return true
-                }
-            }
-
-            if (parent is YAMLMapping) {
-                val mappingParent = parent.parent
-                if (mappingParent is YAMLKeyValue) {
-                    val key = mappingParent.keyText
-                    if (key == "dependencies" || key == "dev_dependencies") {
-                        return true
-                    }
-                }
-            }
-
-            parent = parent.parent
-            depth++
-        }
-        return false
     }
 }

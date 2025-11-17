@@ -1,14 +1,11 @@
-package dev.rutvik.flutter_developer_tools.pubspec.api
+package dev.rutvik.flutter_developer_tools.api
 
 import com.google.gson.JsonParser
-import com.intellij.notification.NotificationGroupManager
-import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.project.Project
 import com.intellij.util.io.HttpRequests
-import dev.rutvik.flutter_developer_tools.pubspec.models.PubPackage
-import dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService
+import dev.rutvik.flutter_developer_tools.models.PubPackage
+import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 import kotlinx.coroutines.*
 
 object PubDevApi {

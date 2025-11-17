@@ -1,9 +1,9 @@
-package dev.rutvik.flutter_developer_tools.pubspec.services
+package dev.rutvik.flutter_developer_tools.services
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.*
-import dev.rutvik.flutter_developer_tools.pubspec.models.PackageCacheState
-import dev.rutvik.flutter_developer_tools.pubspec.models.PubPackage
+import dev.rutvik.flutter_developer_tools.models.PackageCacheState
+import dev.rutvik.flutter_developer_tools.models.PubPackage
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger

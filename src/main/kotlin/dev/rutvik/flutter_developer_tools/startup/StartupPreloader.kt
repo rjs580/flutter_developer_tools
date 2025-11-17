@@ -2,8 +2,8 @@ package dev.rutvik.flutter_developer_tools.startup
 
 import com.intellij.ide.AppLifecycleListener
 import com.intellij.openapi.application.ApplicationManager
-import dev.rutvik.flutter_developer_tools.pubspec.api.PubDevApi
-import dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService
+import dev.rutvik.flutter_developer_tools.api.PubDevApi
+import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 
 class StartupPreloader : AppLifecycleListener {
     companion object {

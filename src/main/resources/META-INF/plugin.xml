@@ -33,20 +33,24 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Notification Group -->
-        <notificationGroup
-                id="Flutter Developer Tools"
-                displayType="BALLOON"/>
-
         <!-- Application Services -->
         <applicationService
-                serviceImplementation="dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService"/>
+                serviceImplementation="dev.rutvik.flutter_developer_tools.services.PubPackageCacheService"/>
 
         <!-- Pub Package Completion -->
         <completion.contributor
                 language="yaml"
                 order="first"
                 implementationClass="dev.rutvik.flutter_developer_tools.pubspec.completions.PubPackageCompletionContributor"/>
+
+        <!-- Reference Contributor -->
+        <psi.referenceContributor
+                language="yaml"
+                implementation="dev.rutvik.flutter_developer_tools.pubspec.referenceContributor.PubPackageReferenceContributor"/>
+
+        <!-- Annotator -->
+        <annotator language="yaml" order="first"
+                   implementationClass="dev.rutvik.flutter_developer_tools.pubspec.annotator.PubPackageAnnotator"/>
 
         <!-- Cache invalidators -->
         <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>

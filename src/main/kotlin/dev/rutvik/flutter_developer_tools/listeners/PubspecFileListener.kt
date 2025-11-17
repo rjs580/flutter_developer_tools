@@ -3,7 +3,7 @@ package dev.rutvik.flutter_developer_tools.listeners
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.vfs.VirtualFile
-import dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService
+import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 
 class PubspecFileListener : FileEditorManagerListener {
 

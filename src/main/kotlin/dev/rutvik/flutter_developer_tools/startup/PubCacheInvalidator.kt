@@ -2,7 +2,7 @@ package dev.rutvik.flutter_developer_tools.startup
 
 import com.intellij.ide.caches.CachesInvalidator
 import com.intellij.openapi.application.ApplicationManager
-import dev.rutvik.flutter_developer_tools.pubspec.services.PubPackageCacheService
+import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 
 class PubCacheInvalidator : CachesInvalidator() {
     override fun invalidateCaches() {
