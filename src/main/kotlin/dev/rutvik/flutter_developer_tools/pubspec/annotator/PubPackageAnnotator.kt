@@ -82,6 +82,9 @@ class PubPackageAnnotator : Annotator {
             return
         }
 
+        // Get safe upgrade version
+        val safeVersion = VersionUtils.getSafeUpgradeVersion(normalizedCurrent, pkgInfo.versions ?: emptyList())
+
         // Create annotation with warning/info severity
         val severity = if (updateType == VersionUtils.UpdateType.MAJOR) {
             HighlightSeverity.WARNING
@@ -97,8 +100,11 @@ class PubPackageAnnotator : Annotator {
             .textAttributes(CodeInsightColors.WEAK_WARNING_ATTRIBUTES)
 
         // Add quick fixes
-        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, pkgInfo, runPubGet = false))
-        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, pkgInfo, runPubGet = true))
+        // If safe version is same as latest, only show one set of fixes
+        if (safeVersion != null && safeVersion != latestVersion) {
+            builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, pkgInfo, runPubGet = false))
+            builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, pkgInfo, runPubGet = true))
+        }
         builder.withFix(FullUpgradeQuickFix(pkgName, latestVersion, runPubGet = false))
         builder.withFix(FullUpgradeQuickFix(pkgName, latestVersion, runPubGet = true))
 

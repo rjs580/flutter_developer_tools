@@ -1,7 +1,9 @@
 
 package dev.rutvik.flutter_developer_tools.pubspec.quickfix
 
+import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.impl.BaseIntentionAction
+import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
@@ -39,6 +41,23 @@ class SafeUpgradeQuickFix(
         // Only show if there's a safe upgrade available
         val safeVersion = VersionUtils.getSafeUpgradeVersion(currentVersion, packageInfo.versions ?: emptyList())
         return safeVersion != null
+    }
+
+    override fun generatePreview(project: Project, editor: Editor, file: PsiFile): IntentionPreviewInfo {
+        val offset = editor.caretModel.offset
+        val element = file.findElementAt(offset) ?: return IntentionPreviewInfo.EMPTY
+        val yamlScalar = PsiTreeUtil.getParentOfType(element, YAMLScalar::class.java) ?: return IntentionPreviewInfo.EMPTY
+
+        val targetVersion = VersionUtils.getSafeUpgradeVersion(currentVersion, packageInfo.versions ?: emptyList())
+            ?: return IntentionPreviewInfo.EMPTY
+
+        val newText = "^$targetVersion"
+
+        // Create a copy and perform the change to show in preview
+        val yamlScalarCopy = yamlScalar.copy() as YAMLScalar
+        yamlScalarCopy.updateText(newText)
+
+        return IntentionPreviewInfo.DIFF
     }
 
     override fun invoke(project: Project, editor: Editor?, file: PsiFile?) {
@@ -87,6 +106,20 @@ class FullUpgradeQuickFix(
 
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile?): Boolean {
         return PubspecUtils.isPubspecFile(file)
+    }
+
+    override fun generatePreview(project: Project, editor: Editor, file: PsiFile): IntentionPreviewInfo {
+        val offset = editor.caretModel.offset
+        val element = file.findElementAt(offset) ?: return IntentionPreviewInfo.EMPTY
+        val yamlScalar = PsiTreeUtil.getParentOfType(element, YAMLScalar::class.java) ?: return IntentionPreviewInfo.EMPTY
+
+        val newText = "^$latestVersion"
+
+        // Create a copy and perform the change to show in preview
+        val yamlScalarCopy = yamlScalar.copy() as YAMLScalar
+        yamlScalarCopy.updateText(newText)
+
+        return IntentionPreviewInfo.DIFF
     }
 
     override fun invoke(project: Project, editor: Editor?, file: PsiFile?) {

@@ -12,7 +12,7 @@ data class PubPackage(
     var homepageUrl: String? = null
 ) {
     val isFlutterFavorite: Boolean
-        get() = tags?.contains("is:favorite") ?: false
+        get() = tags?.contains("is:flutter-favorite") ?: false
 
     val isDiscontinued: Boolean
         get() = tags?.contains("is:discontinued") ?: false

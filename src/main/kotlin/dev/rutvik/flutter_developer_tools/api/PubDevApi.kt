@@ -152,19 +152,11 @@ object PubDevApi {
                     ?.map { it.asJsonObject["version"].asString }
                     ?.toList()
 
-                println("=========================")
-                println("$versions")
-                println("=========================")
-
                 val jsonScore = JsonParser.parseString(score).asJsonObject
                 val likes = jsonScore["likeCount"]?.asInt ?: 0
                 val pubPoints = jsonScore["grantedPoints"]?.asInt ?: 0
 
                 val tags = jsonScore.getAsJsonArray("tags")?.map { it.asString }
-
-                println("=========================")
-                println("$tags")
-                println("=========================")
 
                 PubPackage(
                     name,

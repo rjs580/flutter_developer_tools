@@ -126,7 +126,10 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
 
             // Show safe version if it's different from latest, otherwise show latest
             if (safeVersion != null && safeVersion != latestVersion) {
+                parts.add(factory.smallText("Safe: "))
                 parts.add(factory.smallText(safeVersion))
+                parts.add(factory.smallText(" | Latest: "))
+                parts.add(factory.smallText(latestVersion))
             } else {
                 parts.add(factory.smallText(latestVersion))
             }
@@ -138,26 +141,23 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
                 parts.add(factory.smallText(")"))
             }
 
-            // Add badges
+            // Add badges with better visibility
             if (pkgInfo.isFlutterFavorite) {
-                parts.add(factory.textSpacePlaceholder(1, true))
-                parts.add(factory.smallText("★"))
-                parts.add(factory.textSpacePlaceholder(1, true))
-                parts.add(createBadge("FLUTTER FAVORITE"))
+                parts.add(factory.textSpacePlaceholder(2, true))
+                val badgeText = factory.smallText(" ★ FLUTTER FAVORITE ")
+                parts.add(factory.roundWithBackground(badgeText))
             }
 
             if (pkgInfo.isDiscontinued) {
-                parts.add(factory.textSpacePlaceholder(1, true))
-                parts.add(factory.smallText("⚠"))
-                parts.add(factory.textSpacePlaceholder(1, true))
-                parts.add(createBadge("DISCONTINUED"))
+                parts.add(factory.textSpacePlaceholder(2, true))
+                val badgeText = factory.smallText(" ⚠ DISCONTINUED ")
+                parts.add(factory.roundWithBackground(badgeText))
             }
 
             if (pkgInfo.isDart3Incompatible) {
-                parts.add(factory.textSpacePlaceholder(1, true))
-                parts.add(factory.smallText("⚠"))
-                parts.add(factory.textSpacePlaceholder(1, true))
-                parts.add(createBadge("DART3-INCOMPATIBLE"))
+                parts.add(factory.textSpacePlaceholder(2, true))
+                val badgeText = factory.smallText(" ⚠ DART3-INCOMPATIBLE ")
+                parts.add(factory.roundWithBackground(badgeText))
             }
 
             val sequence = SequencePresentation(parts)
