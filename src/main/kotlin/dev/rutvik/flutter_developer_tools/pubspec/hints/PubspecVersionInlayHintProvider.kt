@@ -87,7 +87,9 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
             val normalizedCurrent = PubspecUtils.normalizeVersionString(currentVersion)
             val updateType = VersionUtils.getUpdateType(normalizedCurrent, latestVersion)
 
-            if (updateType == VersionUtils.UpdateType.NONE) return true
+            // Show hints if there's an update OR if package has warning badges
+            val hasWarnings = pkgInfo.isDiscontinued || pkgInfo.isDart3Incompatible
+            if (updateType == VersionUtils.UpdateType.NONE && !hasWarnings) return true
 
             // Get safe upgrade version if available
             val safeVersion = VersionUtils.getSafeUpgradeVersion(normalizedCurrent, pkgInfo.versions ?: emptyList())
@@ -124,28 +126,24 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
             // Add spacing
             parts.add(factory.textSpacePlaceholder(2, true))
 
-            // Show safe version if it's different from latest, otherwise show latest
-            if (safeVersion != null && safeVersion != latestVersion) {
-                parts.add(factory.smallText("Safe: "))
-                parts.add(factory.smallText(safeVersion))
-                parts.add(factory.smallText(" | Latest: "))
-                parts.add(factory.smallText(latestVersion))
-            } else {
-                parts.add(factory.smallText(latestVersion))
-            }
+            // Only show version info if there's an update
+            if (updateType != VersionUtils.UpdateType.NONE) {
+                // Show safe version if it's different from latest, otherwise show latest
+                if (safeVersion != null && safeVersion != latestVersion) {
+                    parts.add(factory.smallText("Safe: "))
+                    parts.add(factory.smallText(safeVersion))
+                    parts.add(factory.smallText(" | Latest: "))
+                    parts.add(factory.smallText(latestVersion))
+                } else {
+                    parts.add(factory.smallText(latestVersion))
+                }
 
-            // " (Major Update)"
-            if (updateLabel.isNotEmpty()) {
-                parts.add(factory.smallText(" ("))
-                parts.add(factory.smallText(updateLabel))
-                parts.add(factory.smallText(")"))
-            }
-
-            // Add badges with better visibility
-            if (pkgInfo.isFlutterFavorite) {
-                parts.add(factory.textSpacePlaceholder(2, true))
-                val badgeText = factory.smallText(" ★ FLUTTER FAVORITE ")
-                parts.add(factory.roundWithBackground(badgeText))
+                // " (Major Update)"
+                if (updateLabel.isNotEmpty()) {
+                    parts.add(factory.smallText(" ("))
+                    parts.add(factory.smallText(updateLabel))
+                    parts.add(factory.smallText(")"))
+                }
             }
 
             if (pkgInfo.isDiscontinued) {
@@ -166,11 +164,6 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
             return MenuOnClickPresentation(sequence, file.project) {
                 emptyList()
             }
-        }
-
-        private fun createBadge(text: String): InlayPresentation {
-            val textPresentation = factory.smallText(text)
-            return factory.roundWithBackground(textPresentation)
         }
     }
 
