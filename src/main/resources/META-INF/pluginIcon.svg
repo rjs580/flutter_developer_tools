@@ -1,40 +1,40 @@
 <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
-        <!-- Smooth red-orange gradient -->
-        <linearGradient id="bg_gradient" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stop-color="#FF6B35"/>
-            <stop offset="0.3" stop-color="#FF5722"/>
-            <stop offset="0.6" stop-color="#FF7043"/>
-            <stop offset="1" stop-color="#FF8A65"/>
+        <!-- Flutter blue gradient -->
+        <linearGradient id="flutter_gradient" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#54C5F8"/>
+            <stop offset="0.5" stop-color="#429CE3"/>
+            <stop offset="1" stop-color="#0553B1"/>
         </linearGradient>
 
-        <!-- Flutter blue gradient -->
-        <linearGradient id="flutter_gradient" x1="8" y1="8" x2="28" y2="28" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stop-color="#47C5FB"/>
-            <stop offset="0.5" stop-color="#39B9F6"/>
-            <stop offset="1" stop-color="#00A8EA"/>
-        </linearGradient>
+        <!-- Subtle shadow for depth -->
+        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.3"/>
+        </filter>
     </defs>
 
-    <!-- Background with rounded corners -->
-    <rect width="40" height="40" rx="3" fill="url(#bg_gradient)"/>
-
-    <!-- Flutter icon (scaled and positioned) -->
-    <g transform="translate(8, 8) scale(1.333)">
+    <!-- Flutter icon (maximized - centered and scaled to nearly fill the canvas) -->
+    <g transform="translate(2, 2) scale(2.5)" filter="url(#shadow)">
         <path d="M9.543 0L1.533 8 4 10.467 14.456.008h-4.905L9.543 0zm.009 7.381l-4.314 4.305 4.314 4.314h4.905l-4.307-4.312 4.307-4.307h-4.905z"
               fill="url(#flutter_gradient)"/>
     </g>
 
-    <!-- Settings cog icon in bottom-right (scaled from 52x52 to fit) -->
-    <g transform="translate(23, 23) scale(0.27)">
-        <path d="M26.1,19.1c-3.9,0-7,3.1-7,7s3.1,7,7,7s7-3.1,7-7S30,19.1,26.1,19.1z" fill="white"/>
-        <path d="M47.1,32.4l-3.7-3.1c0.2-1.1,0.3-2.3,0.3-3.4c0-1.1-0.1-2.3-0.3-3.4l3.7-3.1c1.2-1,1.6-2.8,0.8-4.2
-            l-1.6-2.8c-0.6-1-1.7-1.6-2.9-1.6c-0.4,0-0.8,0.1-1.1,0.2l-4.6,1.7c-1.8-1.6-3.8-2.7-5.9-3.4L31,4.6c-0.3-1.6-1.7-2.5-3.3-2.5h-3.2
-            c-1.6,0-3,0.9-3.3,2.5l-0.8,4.6c-2.2,0.7-4.2,1.9-6,3.4l-4.6-1.7c-0.4-0.1-0.7-0.2-1.1-0.2c-1.2,0-2.3,0.6-2.9,1.6l-1.6,2.8
-            c-0.8,1.4-0.5,3.2,0.8,4.2l3.7,3.1c-0.2,1.1-0.3,2.3-0.3,3.4c0,1.2,0.1,2.3,0.3,3.4L5,32.3c-1.2,1-1.6,2.8-0.8,4.2l1.6,2.8
-            c0.6,1,1.7,1.6,2.9,1.6c0.4,0,0.8-0.1,1.1-0.2l4.6-1.7c1.8,1.6,3.8,2.7,5.9,3.4l0.8,4.8c0.3,1.6,1.6,2.7,3.3,2.7h3.2
-            c1.6,0,3-1.2,3.3-2.8l0.8-4.8c2.3-0.8,4.4-2,6.2-3.7l4.3,1.7c0.4,0.1,0.8,0.2,1.2,0.2c1.2,0,2.3-0.6,2.9-1.6l1.5-2.6
-            C48.7,35.2,48.3,33.4,47.1,32.4z M26.1,37.1c-6.1,0-11-4.9-11-11s4.9-11,11-11s11,4.9,11,11S32.2,37.1,26.1,37.1z"
-              fill="white"/>
+    <!-- Settings cog icon in bottom-right corner (larger and more visible with orange accent) -->
+    <g transform="translate(26.5, 26.5)">
+        <!-- White outline/glow for better visibility -->
+        <circle cx="6.5" cy="6.5" r="6.5" fill="white" opacity="0.9"/>
+
+        <!-- Cog with orange/accent color -->
+        <g transform="scale(0.25)">
+            <path d="M26.1,19.1c-3.9,0-7,3.1-7,7s3.1,7,7,7s7-3.1,7-7S30,19.1,26.1,19.1z" fill="#FF6B35"/>
+            <path d="M47.1,32.4l-3.7-3.1c0.2-1.1,0.3-2.3,0.3-3.4c0-1.1-0.1-2.3-0.3-3.4l3.7-3.1c1.2-1,1.6-2.8,0.8-4.2
+                l-1.6-2.8c-0.6-1-1.7-1.6-2.9-1.6c-0.4,0-0.8,0.1-1.1,0.2l-4.6,1.7c-1.8-1.6-3.8-2.7-5.9-3.4L31,4.6c-0.3-1.6-1.7-2.5-3.3-2.5h-3.2
+                c-1.6,0-3,0.9-3.3,2.5l-0.8,4.6c-2.2,0.7-4.2,1.9-6,3.4l-4.6-1.7c-0.4-0.1-0.7-0.2-1.1-0.2c-1.2,0-2.3,0.6-2.9,1.6l-1.6,2.8
+                c-0.8,1.4-0.5,3.2,0.8,4.2l3.7,3.1c-0.2,1.1-0.3,2.3-0.3,3.4c0,1.2,0.1,2.3,0.3,3.4L5,32.3c-1.2,1-1.6,2.8-0.8,4.2l1.6,2.8
+                c0.6,1,1.7,1.6,2.9,1.6c0.4,0,0.8-0.1,1.1-0.2l4.6-1.7c1.8,1.6,3.8,2.7,5.9,3.4l0.8,4.8c0.3,1.6,1.6,2.7,3.3,2.7h3.2
+                c1.6,0,3-1.2,3.3-2.8l0.8-4.8c2.3-0.8,4.4-2,6.2-3.7l4.3,1.7c0.4,0.1,0.8,0.2,1.2,0.2c1.2,0,2.3-0.6,2.9-1.6l1.5-2.6
+                C48.7,35.2,48.3,33.4,47.1,32.4z M26.1,37.1c-6.1,0-11-4.9-11-11s4.9-11,11-11s11,4.9,11,11S32.2,37.1,26.1,37.1z"
+                  fill="#FF6B35"/>
+        </g>
     </g>
 </svg>

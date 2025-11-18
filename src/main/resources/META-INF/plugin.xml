@@ -13,23 +13,72 @@
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
-    <h2>Advanced Pubspec.yaml Intelligence for Flutter & Dart</h2>
-    <p>Features:</p>
-    <ul>
-        <li>Smart auto-complete for pub.dev packages showing Flutter favorites and likes count</li>
-        <li>Package names and versions can be opened on pub.dev using CMD+click (or similar)</li>
-        <li>Hover over package names to see repository links and package details</li>
-        <li>Hover over version numbers to see changelog links</li>
-    </ul>
+        <h2>Enhanced Pubspec.yaml Intelligence for Flutter & Dart Development</h2>
+
+        <p>
+            Flutter Developer Tools supercharges your Flutter and Dart development workflow with advanced
+            pubspec.yaml intelligence. Get instant access to package information, documentation, and smart
+            upgrade suggestions—all without leaving your IDE.
+        </p>
+
+        <h3>Key Features</h3>
+
+        <h4>🔍 Smart Package Discovery</h4>
+        <ul>
+            <li>Auto-complete pub.dev packages with real-time search</li>
+            <li>See Flutter Favorites (⭐) and likes count directly in completion popup</li>
+            <li>Automatically inserts the latest version when selecting a package</li>
+        </ul>
+
+        <h4>📚 Comprehensive Documentation</h4>
+        <ul>
+            <li>Hover over <b>package names</b> to view full README documentation</li>
+            <li>Hover over <b>version numbers</b> to see CHANGELOG with version history</li>
+            <li>Supports GitHub, GitLab, Bitbucket, Codeberg, and SourceHut repositories</li>
+            <li>Intelligent handling of monorepo packages</li>
+        </ul>
+
+        <h4>🔗 Quick Navigation</h4>
+        <ul>
+            <li>CMD+click (CTRL+click on Windows/Linux) package names to open pub.dev package page</li>
+            <li>CMD+click version numbers to open specific version details</li>
+            <li>Direct links to repository and homepage URLs</li>
+        </ul>
+
+        <h4>🔄 Smart Update Management</h4>
+        <ul>
+            <li>Inline hints showing available updates with type classification (Major/Minor/Patch)</li>
+            <li>Warning annotations for packages with available updates</li>
+            <li>One-click <b>safe upgrades</b> that skip breaking major version changes</li>
+            <li>One-click <b>full upgrades</b> to the latest version</li>
+            <li>Optional automatic <code>flutter pub get</code> execution after upgrade</li>
+        </ul>
+
+        <h4>⚠️ Package Health Indicators</h4>
+        <ul>
+            <li>Visual badges for discontinued packages</li>
+            <li>Warnings for Dart 3 incompatible packages</li>
+        </ul>
+
+        <p>
+            <b>Requirements:</b> IntelliJ IDEA 2025.1+ with Flutter and Dart plugins installed.
+        </p>
     ]]></description>
 
     <change-notes><![CDATA[
-    <h3>Version 1.0.0</h3>
-    <ul>
-        <li>Initial release</li>
-        <li>Added package auto-completion with Flutter favorites and likes</li>
-        <li>Added hyperlink support to open packages on pub.dev</li>
-    </ul>
+        <h3>Version 1.0.0 - Initial Release</h3>
+        <h4>Features</h4>
+        <ul>
+            <li><b>Smart Package Auto-completion</b>: Auto-complete pub.dev packages with Flutter Favorites badge and likes count</li>
+            <li><b>Intelligent Package Insights</b>: Hover over package names to view comprehensive README documentation with repository links</li>
+            <li><b>Version Changelog Access</b>: Hover over version numbers to see CHANGELOG with version history</li>
+            <li><b>Direct Package Navigation</b>: CMD+click (or CTRL+click) on package names and versions to open pub.dev pages</li>
+            <li><b>Update Notifications</b>: Inlay hints showing available updates with categorization (Major/Minor/Patch)</li>
+            <li><b>Safe Upgrade Quick Fixes</b>: One-click safe upgrades (skip major versions) and full upgrades with optional pub get execution</li>
+            <li><b>Package Health Indicators</b>: Visual warnings for discontinued and Dart 3 incompatible packages</li>
+            <li><b>Multi-Repository Support</b>: Fetches documentation from GitHub, GitLab, Bitbucket, Codeberg, and SourceHut</li>
+            <li><b>Monorepo Intelligence</b>: Automatically handles packages in monorepo structures</li>
+        </ul>
     ]]></change-notes>
 
     <!-- Product and plugin compatibility requirements.
