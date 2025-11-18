@@ -19,7 +19,7 @@ class PackageLookupRenderer(private val packageName: String) : LookupElementRend
             presentation.itemText = "$packageName: ^${info.latestVersion}"
 
             // Use greyed out icon if not Flutter Favorite
-            val favoriteIcon = if (info.isFlutterFavorite == true) {
+            val favoriteIcon = if (info.isFlutterFavorite) {
                 AllIcons.Ide.LikeSelected
             } else {
                 AllIcons.Ide.LikeDimmed

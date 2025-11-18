@@ -1,10 +1,9 @@
 package dev.rutvik.flutter_developer_tools.utils
 
-import com.intellij.openapi.module.Module
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import io.flutter.pub.PubRoot
 import io.flutter.sdk.FlutterSdk
 

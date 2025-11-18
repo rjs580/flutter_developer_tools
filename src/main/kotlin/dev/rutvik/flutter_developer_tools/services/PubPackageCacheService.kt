@@ -226,7 +226,7 @@ class PubPackageCacheService : PersistentStateComponent<PackageCacheState> {
             }.thenByDescending { pkg ->
                 // Secondary sort: popularity first (likes + flutter favorite bonus)
                 var score = (pkg.likes ?: 0)
-                if (pkg.isFlutterFavorite == true) score += 10000
+                if (pkg.isFlutterFavorite) score += 10000
                 score
             })
             .take(limit)

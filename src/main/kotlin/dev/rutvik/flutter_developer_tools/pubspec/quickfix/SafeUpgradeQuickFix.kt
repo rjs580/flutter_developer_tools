@@ -1,7 +1,6 @@
 
 package dev.rutvik.flutter_developer_tools.pubspec.quickfix
 
-import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.impl.BaseIntentionAction
 import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
 import com.intellij.openapi.command.WriteCommandAction

@@ -5,12 +5,11 @@ import com.intellij.lang.documentation.DocumentationMarkup
 import com.intellij.openapi.editor.Editor
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import dev.rutvik.flutter_developer_tools.models.PubPackage
 import dev.rutvik.flutter_developer_tools.api.PubDevApi
-import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
+import dev.rutvik.flutter_developer_tools.api.RepositoryMarkdownFetcher
+import dev.rutvik.flutter_developer_tools.models.PubPackage
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils.isPubPackageName
-import dev.rutvik.flutter_developer_tools.api.RepositoryMarkdownFetcher
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
