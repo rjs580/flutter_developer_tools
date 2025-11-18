@@ -60,6 +60,14 @@
             <li>Warnings for Dart 3 incompatible packages</li>
         </ul>
 
+        <h4>💡 Dart Code Intelligence</h4>
+        <ul>
+            <li>Parameter name hints for non-named parameters in method calls</li>
+            <li>Type hints for variables with inferred types (var, final, const)</li>
+            <li>Code lens showing usage counts for classes, methods, and variables</li>
+            <li>Implementation counts for abstract classes</li>
+        </ul>
+
         <p>
             <b>Requirements:</b> IntelliJ IDEA 2025.1+ with Flutter and Dart plugins installed.
         </p>
@@ -78,6 +86,9 @@
             <li><b>Package Health Indicators</b>: Visual warnings for discontinued and Dart 3 incompatible packages</li>
             <li><b>Multi-Repository Support</b>: Fetches documentation from GitHub, GitLab, Bitbucket, Codeberg, and SourceHut</li>
             <li><b>Monorepo Intelligence</b>: Automatically handles packages in monorepo structures</li>
+            <li><b>Parameter Hints</b>: Shows parameter names and types for non-named arguments</li>
+            <li><b>Type Hints</b>: Displays inferred types for variables without explicit type annotations</li>
+            <li><b>Code Lens</b>: Shows usage counts and implementation counts for code elements</li>
         </ul>
     ]]></change-notes>
 
@@ -121,6 +132,22 @@
         <codeInsight.inlayProvider
                 language="yaml"
                 implementationClass="dev.rutvik.flutter_developer_tools.pubspec.hints.PubspecVersionInlayHintProvider"/>
+
+        <!-- Dart Parameter Hints -->
+        <codeInsight.parameterNameHints
+                implementationClass="dev.rutvik.flutter_developer_tools.dart.hints.DartParameterHintsProvider"
+                language="Dart"/>
+
+        <!-- Dart Type Hints -->
+        <codeInsight.inlayProvider
+                implementationClass="dev.rutvik.flutter_developer_tools.dart.hints.DartTypeHintsProvider"
+                language="Dart"/>
+
+        <!-- Dart Code Vision (Usage Lens) -->
+        <codeInsight.daemonBoundCodeVisionProvider
+                implementation="dev.rutvik.flutter_developer_tools.dart.codeVision.DartReferencesCodeVisionProvider"/>
+        <codeInsight.daemonBoundCodeVisionProvider
+                implementation="dev.rutvik.flutter_developer_tools.dart.codeVision.DartInheritorsCodeVisionProvider"/>
 
         <!-- Cache invalidators -->
         <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>
