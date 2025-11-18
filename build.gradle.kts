@@ -26,6 +26,7 @@ dependencies {
 
         // Add necessary plugin dependencies for compilation here, example:
         bundledPlugin("org.jetbrains.plugins.yaml")
+        bundledPlugin("org.intellij.plugins.markdown")
         plugin("Dart", "252.25557.23")
         plugin("io.flutter", "88.0.0")
     }

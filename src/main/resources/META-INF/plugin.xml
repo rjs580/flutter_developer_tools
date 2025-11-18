@@ -18,6 +18,8 @@
     <ul>
         <li>Smart auto-complete for pub.dev packages showing Flutter favorites and likes count</li>
         <li>Package names and versions can be opened on pub.dev using CMD+click (or similar)</li>
+        <li>Hover over package names to see repository links and package details</li>
+        <li>Hover over version numbers to see changelog links</li>
     </ul>
     ]]></description>
 
@@ -34,6 +36,7 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.yaml</depends>
+    <depends>org.intellij.plugins.markdown</depends>
     <depends>io.flutter</depends>
     <depends>Dart</depends>
 
@@ -54,6 +57,12 @@
         <psi.referenceContributor
                 language="yaml"
                 implementation="dev.rutvik.flutter_developer_tools.pubspec.referenceContributor.PubPackageReferenceContributor"/>
+
+        <!-- Documentation Provider -->
+        <lang.documentationProvider
+                language="yaml"
+                implementationClass="dev.rutvik.flutter_developer_tools.pubspec.documentation.PubPackageDocumentationProvider"
+                order="first, before YamlJsonSchemaDocumentationProvider"/>
 
         <!-- Annotator -->
         <annotator language="yaml" order="first"
