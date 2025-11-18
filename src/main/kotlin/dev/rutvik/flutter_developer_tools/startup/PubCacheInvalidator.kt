@@ -18,4 +18,8 @@ class PubCacheInvalidator : CachesInvalidator() {
     override fun getDescription(): String {
         return "Clears Flutter/Dart package cache"
     }
+
+    override fun optionalCheckboxDefaultValue(): Boolean {
+        return true
+    }
 }
