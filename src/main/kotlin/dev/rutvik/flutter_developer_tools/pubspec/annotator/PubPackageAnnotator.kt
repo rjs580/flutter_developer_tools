@@ -3,9 +3,14 @@ package dev.rutvik.flutter_developer_tools.pubspec.annotator
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.HighlightSeverity
+import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.psi.PsiElement
+import dev.rutvik.flutter_developer_tools.api.PubDevApi
+import dev.rutvik.flutter_developer_tools.pubspec.quickfix.FullUpgradeQuickFix
+import dev.rutvik.flutter_developer_tools.pubspec.quickfix.SafeUpgradeQuickFix
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils.isPubPackageName
+import dev.rutvik.flutter_developer_tools.utils.VersionUtils
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
 
@@ -29,7 +34,6 @@ class PubPackageAnnotator : Annotator {
 
         val pkgName = yamlKv.keyText
         if (!pkgName.isPubPackageName()) return
-
         if (!PubspecUtils.isPubDevPackage(yamlKv)) return
 
         yamlKv.key?.let { keyElement ->
@@ -53,8 +57,41 @@ class PubPackageAnnotator : Annotator {
         val versionText = yamlScalar.textValue
         if (!PubspecUtils.isSimpleVersion(versionText)) return
 
-        holder.newAnnotation(HighlightSeverity.INFORMATION, "")
+        val pkgInfo = PubDevApi.waitForPackageInfo(pkgName) ?: return
+
+        val latestVersion = pkgInfo.latestVersion ?: return
+
+        val normalizedCurrent = PubspecUtils.normalizeVersionString(versionText)
+        val updateType = VersionUtils.getUpdateType(normalizedCurrent, latestVersion)
+
+        // Only annotate if there's an update available
+        if (updateType == VersionUtils.UpdateType.NONE) {
+            holder.newAnnotation(HighlightSeverity.INFORMATION, "")
+                .range(yamlScalar)
+                .create()
+            return
+        }
+
+        // Create annotation with warning/info severity
+        val severity = if (updateType == VersionUtils.UpdateType.MAJOR) {
+            HighlightSeverity.WARNING
+        } else {
+            HighlightSeverity.WEAK_WARNING
+        }
+
+        val updateLabel = VersionUtils.formatUpdateType(updateType)
+        val message = "Update available: $latestVersion ($updateLabel)"
+
+        val builder = holder.newAnnotation(severity, message)
             .range(yamlScalar)
-            .create()
+            .textAttributes(CodeInsightColors.WEAK_WARNING_ATTRIBUTES)
+
+        // Add quick fixes
+        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, latestVersion, runPubGet = false))
+        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, latestVersion, runPubGet = true))
+        builder.withFix(FullUpgradeQuickFix(pkgName, latestVersion, runPubGet = false))
+        builder.withFix(FullUpgradeQuickFix(pkgName, latestVersion, runPubGet = true))
+
+        builder.create()
     }
 }

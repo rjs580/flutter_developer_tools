@@ -89,10 +89,8 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
             return null
         }
 
-        val cache = PubPackageCacheService.getInstance()
-
         // Wait for package info to load
-        val pkgInfo = waitForPackageInfo(pkgName, cache)
+        val pkgInfo = PubDevApi.waitForPackageInfo(pkgName)
             ?: return buildLoadingDoc(pkgName, "package information")
 
         // Try repository URL first, fall back to homepage URL
@@ -135,11 +133,10 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
             return null
         }
 
-        val cache = PubPackageCacheService.getInstance()
         val normalizedVersion = PubspecUtils.normalizeVersionString(versionText)
 
         // Wait for package info to load
-        val pkgInfo = waitForPackageInfo(pkgName, cache)
+        val pkgInfo = PubDevApi.waitForPackageInfo(pkgName)
             ?: return buildLoadingDoc(pkgName, "version information")
 
         // Try repository URL first, fall back to homepage URL
@@ -159,26 +156,6 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         }
 
         return buildVersionDocWithChangelog(pkgName, normalizedVersion, changelog, repoUrl)
-    }
-
-    private fun waitForPackageInfo(pkgName: String, cache: PubPackageCacheService): PubPackage? {
-        val cachedInfo = cache.getInfo(pkgName)
-        if (cachedInfo?.latestVersion != null) {
-            return cachedInfo
-        }
-
-        val future = CompletableFuture<PubPackage>()
-
-        PubDevApi.requestDetailsIfNeeded(pkgName) { info ->
-            cache.updateDetails(info)
-            future.complete(info)
-        }
-
-        return try {
-            future.get(30, TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            cache.getInfo(pkgName)
-        }
     }
 
     private fun buildLoadingDoc(pkgName: String, what: String): String {
@@ -312,7 +289,7 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
 
     private fun StringBuilder.addPackageMetadata(pkgInfo: PubPackage) {
         val metadata = mutableListOf<String>()
-        pkgInfo.isFlutterFavorite?.let { if (it) metadata.add("Flutter Favorite ⭐") }
+        pkgInfo.isFlutterFavorite.let { if (it) metadata.add("Flutter Favorite ⭐") }
         pkgInfo.likes?.let { metadata.add("$it ❤") }
         pkgInfo.pubPoints?.let { metadata.add("$it pts") }
 

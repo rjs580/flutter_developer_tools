@@ -68,6 +68,11 @@
         <annotator language="yaml" order="first"
                    implementationClass="dev.rutvik.flutter_developer_tools.pubspec.annotator.PubPackageAnnotator"/>
 
+        <!-- Inlay Hint Provider for Version Updates -->
+        <codeInsight.inlayProvider
+                language="yaml"
+                implementationClass="dev.rutvik.flutter_developer_tools.pubspec.hints.PubspecVersionInlayHintProvider"/>
+
         <!-- Cache invalidators -->
         <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>
     </extensions>

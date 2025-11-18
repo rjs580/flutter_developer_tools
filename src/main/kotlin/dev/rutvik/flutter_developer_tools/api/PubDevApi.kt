@@ -7,6 +7,8 @@ import com.intellij.util.io.HttpRequests
 import dev.rutvik.flutter_developer_tools.models.PubPackage
 import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 import kotlinx.coroutines.*
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 
 /**
@@ -42,8 +44,28 @@ object PubDevApi {
             }
         }
     }
-    
-    
+
+    fun waitForPackageInfo(name: String): PubPackage? {
+        val cache = PubPackageCacheService.getInstance()
+        val cachedInfo = cache.getInfo(name)
+
+        if (cachedInfo?.latestVersion != null) {
+            return cachedInfo
+        }
+
+        val future = CompletableFuture<PubPackage>()
+
+        requestDetailsIfNeeded(name) { info ->
+            cache.updateDetails(info)
+            future.complete(info)
+        }
+
+        return try {
+            future.get(30, TimeUnit.SECONDS)
+        } catch (_: Exception) {
+            cache.getInfo(name)
+        }
+    }
 
     fun requestDetailsIfNeeded(name: String, callback: (PubPackage) -> Unit) {
         val cache = PubPackageCacheService.getInstance()
