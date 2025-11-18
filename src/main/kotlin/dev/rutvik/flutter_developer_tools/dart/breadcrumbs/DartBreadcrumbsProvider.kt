@@ -16,13 +16,14 @@ import javax.swing.Icon
  * Enhanced Breadcrumbs Navigation Provider for Dart files
  *
  * Provides comprehensive breadcrumb navigation for Dart elements including:
- * - Classes (abstract, regular, mixins)
+ * - Classes (abstract, regular, mixins) with hierarchy
  * - Methods (abstract, regular, getters, setters)
  * - Functions (top-level and local)
  * - Constructors (factory, named, default)
  * - Variables and fields
  * - Enums and enum values
  * - Extensions
+ * - Widget instantiations (for Flutter widget tree navigation)
  */
 class DartBreadcrumbsProvider : BreadcrumbsProvider {
     override fun getLanguages(): Array<Language> = arrayOf(DartLanguage.INSTANCE)
@@ -48,6 +49,10 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
             // Enum values
         is DartEnumConstantDeclaration -> {
             (e as? DartComponent)?.name != null
+        }
+        // Widget instantiations - call expressions (covers both new and implicit constructors)
+        is DartCallExpression -> {
+            isWidgetInstantiation(e)
         }
         else -> false
     }
@@ -76,6 +81,9 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
 
         // Enum values
         is DartEnumConstantDeclaration -> e.name ?: ""
+
+        // Widget instantiations
+        is DartCallExpression -> buildWidgetInfoFromCall(e)
 
         else -> e.text.take(50)
     }
@@ -108,6 +116,8 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
                 }
             }
             is DartEnumConstantDeclaration -> com.intellij.icons.AllIcons.Nodes.Enum
+            // Widget instantiations - use a tag icon to represent UI elements
+            is DartCallExpression -> com.intellij.icons.AllIcons.Nodes.Tag
             else -> super.getElementIcon(element)
         }
     }
@@ -118,11 +128,12 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
             RefactoringDescriptionLocation.WITH_PARENT
         )
 
-        // Add additional context information
+        // Add additional context information that's not in the base description
         return when (element) {
             is DartClassDefinition -> buildClassTooltip(element, description)
             is DartMethodDeclaration -> buildMethodTooltip(element, description)
             is DartFunctionDeclarationWithBody -> buildFunctionTooltip(element, description)
+            is DartCallExpression -> buildWidgetTooltipFromCall(element)
             else -> description
         }
     }
@@ -134,7 +145,20 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
             cls.isAbstract -> "abstract class "
             else -> "class "
         }
-        return "$prefix${cls.name}"
+        val name = cls.name ?: ""
+
+        // Always show superclass hierarchy for all classes (including custom widgets)
+        val superclassInfo = cls.superclass?.let { superclass ->
+            val superName = superclass.text
+            // Filter out 'Object' as it's implicit and not useful
+            if (superName.isNotEmpty() && superName != "Object") {
+                " : $superName"
+            } else {
+                ""
+            }
+        } ?: ""
+
+        return "$prefix$name$superclassInfo"
     }
 
     private fun buildExtensionInfo(ext: DartExtensionDeclaration): String {
@@ -200,32 +224,43 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
         return buildVarInfo(firstVar)
     }
 
+    private fun buildWidgetInfoFromCall(callExpr: DartCallExpression): String {
+        val widgetName = getWidgetNameFromCall(callExpr) ?: return "Widget"
+        return widgetName
+    }
+
     // Helper methods for tooltips
 
     private fun buildClassTooltip(cls: DartClassDefinition, baseDescription: String): String {
+        // Use base description as-is since it already contains hierarchy info
+        // Only add supplementary information not included in the description
         val parts = mutableListOf<String>()
         parts.add(baseDescription)
 
-        // Add superclass info
-        cls.superclass?.let {
-            parts.add("extends ${it.text}")
-        }
+        // Only add additional info if not already in description
+        // Check if description already contains "with" or "implements"
+        val hasWith = baseDescription.contains("with")
+        val hasImplements = baseDescription.contains("implements")
 
-        // Add mixins info - traverse children to find type elements
-        cls.mixins?.let { mixinsElement ->
-            val mixinTypes = PsiTreeUtil.findChildrenOfType(mixinsElement, DartType::class.java)
-                .mapNotNull { it.text }
-            if (mixinTypes.isNotEmpty()) {
-                parts.add("with ${mixinTypes.joinToString(", ")}")
+        // Add mixins info only if not already present
+        if (!hasWith) {
+            cls.mixins?.let { mixinsElement ->
+                val mixinTypes = PsiTreeUtil.findChildrenOfType(mixinsElement, DartType::class.java)
+                    .mapNotNull { it.text }
+                if (mixinTypes.isNotEmpty()) {
+                    parts.add("with ${mixinTypes.joinToString(", ")}")
+                }
             }
         }
 
-        // Add interfaces info - traverse children to find type elements
-        cls.interfaces?.let { interfacesElement ->
-            val interfaceTypes = PsiTreeUtil.findChildrenOfType(interfacesElement, DartType::class.java)
-                .mapNotNull { it.text }
-            if (interfaceTypes.isNotEmpty()) {
-                parts.add("implements ${interfaceTypes.joinToString(", ")}")
+        // Add interfaces info only if not already present
+        if (!hasImplements) {
+            cls.interfaces?.let { interfacesElement ->
+                val interfaceTypes = PsiTreeUtil.findChildrenOfType(interfacesElement, DartType::class.java)
+                    .mapNotNull { it.text }
+                if (interfaceTypes.isNotEmpty()) {
+                    parts.add("implements ${interfaceTypes.joinToString(", ")}")
+                }
             }
         }
 
@@ -233,27 +268,81 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
     }
 
     private fun buildMethodTooltip(method: DartMethodDeclaration, baseDescription: String): String {
+        // Use base description and add supplementary info
         val parts = mutableListOf<String>()
         parts.add(baseDescription)
 
-        // Add return type info
-        method.returnType?.let {
-            parts.add("Returns: ${it.text}")
+        // Add return type info if present and not in description
+        method.returnType?.let { returnType ->
+            val returnText = returnType.text
+            if (!baseDescription.contains(returnText)) {
+                parts.add("Returns: $returnText")
+            }
         }
 
         return parts.joinToString("\n")
     }
 
     private fun buildFunctionTooltip(func: DartFunctionDeclarationWithBody, baseDescription: String): String {
+        // Use base description and add supplementary info
         val parts = mutableListOf<String>()
         parts.add(baseDescription)
 
-        // Add return type info
-        func.returnType?.let {
-            parts.add("Returns: ${it.text}")
+        // Add return type info if present and not in description
+        func.returnType?.let { returnType ->
+            val returnText = returnType.text
+            if (!baseDescription.contains(returnText)) {
+                parts.add("Returns: $returnText")
+            }
         }
 
         return parts.joinToString("\n")
+    }
+
+    private fun buildWidgetTooltipFromCall(callExpr: DartCallExpression): String {
+        val widgetName = getWidgetNameFromCall(callExpr) ?: return "Widget instantiation"
+
+        val parts = mutableListOf<String>()
+        parts.add("$widgetName()")
+
+        // Add key parameter if present
+        val arguments = callExpr.arguments
+        arguments?.argumentList?.namedArgumentList?.find {
+            it.parameterReferenceExpression?.text == "key"
+        }?.let {
+            parts.add("key: ${it.expression?.text ?: "..."}")
+        }
+
+        return parts.joinToString("\n")
+    }
+
+    // Utility methods for widgets
+
+    private fun isWidgetInstantiation(callExpr: DartCallExpression): Boolean {
+        // Check if this looks like a widget constructor call
+        // Widgets typically start with uppercase letter
+        val name = getWidgetNameFromCall(callExpr) ?: return false
+        return name.firstOrNull()?.isUpperCase() == true
+    }
+
+    private fun getWidgetNameFromCall(callExpr: DartCallExpression): String? {
+        // Get the expression being called
+        val expression = callExpr.expression ?: return null
+
+        // Handle different call patterns:
+        // 1. Simple: IconButton(...)
+        // 2. Named constructor: FilledButton.icon(...)
+        return when (expression) {
+            is DartReferenceExpression -> {
+                // Simple constructor call
+                expression.text
+            }
+            else -> {
+                // For named constructors or other patterns, get the first identifier
+                val text = expression.text
+                text.substringBefore('(').substringBefore('.')
+            }
+        }
     }
 
     // Utility methods
