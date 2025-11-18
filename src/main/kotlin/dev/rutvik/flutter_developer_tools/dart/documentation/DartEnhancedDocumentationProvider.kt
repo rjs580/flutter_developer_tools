@@ -27,6 +27,12 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
         val dartDocProvider = com.jetbrains.lang.dart.ide.documentation.DartDocumentationProvider()
         val originalDoc = dartDocProvider.generateDoc(element, originalElement) ?: return null
 
+        println("=".repeat(80))
+        println("Original Documentation:")
+        println(originalDoc)
+        println("=".repeat(80))
+
+
         // Enhance code blocks with syntax highlighting
         return enhanceDocumentationWithSyntaxHighlighting(originalDoc, element)
     }
@@ -79,18 +85,45 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
             """<pre style="margin: 8px 0; padding: 8px; background-color: $backgroundColor; font-family: monospace; white-space: pre-wrap;">$highlightedCode</pre>"""
         }
 
-        // Handle standalone <code> tags (inline code) - always apply highlighting
-        val inlineCodePattern = Regex("""(?<!<pre>)<code(?:\s+class="language-(\w+)")?>([^<]+)</code>(?!</pre>)""")
-        enhanced = inlineCodePattern.replace(enhanced) { matchResult ->
-            val language = matchResult.groups[1]?.value?.lowercase() ?: "dart"
-            val encodedCode = matchResult.groups[2]?.value ?: return@replace matchResult.value
-            val code = decodeHtmlEntities(encodedCode)
+        // Handle complex <code> blocks with embedded HTML (like method signatures with <b>, <br/>, etc.)
+        // This pattern matches <code>...</code> including any nested HTML tags
+        val complexCodePattern = Regex("""<code>([\s\S]*?)</code>""", RegexOption.MULTILINE)
 
-            val highlighted = highlightCode(code, language, contextElement)
-            """<code style="font-family: monospace; background-color: $backgroundColor; padding: 2px 4px;">$highlighted</code>"""
+        enhanced = complexCodePattern.replace(enhanced) { matchResult ->
+            val rawContent = matchResult.groups[1]?.value ?: return@replace matchResult.value
+
+            // Check if this is a complex multi-line code block (contains <br or <b tags)
+            if (rawContent.contains("<br") || rawContent.contains("<b>")) {
+                // Process complex code blocks - extract and highlight the actual code parts
+                processComplexCodeBlock(rawContent, backgroundColor, contextElement)
+            } else {
+                // Simple inline code - highlight normally
+                val code = decodeHtmlEntities(rawContent)
+                val highlighted = highlightCode(code, "dart", contextElement)
+                """<code style="font-family: monospace; background-color: $backgroundColor; padding: 2px 4px;">$highlighted</code>"""
+            }
         }
 
         return enhanced
+    }
+
+    /**
+     * Processes complex code blocks that contain HTML formatting like <b>, <br/>, etc.
+     * These are typically method signatures or class declarations.
+     */
+    private fun processComplexCodeBlock(htmlContent: String, backgroundColor: String, contextElement: PsiElement): String {
+        // Extract the raw text content, preserving line breaks
+        val textWithBreaks = htmlContent
+            .replace(Regex("<br/?>"), "\n\n")  // Convert <br> tags to double newlines for separation
+            .replace(Regex("<[^>]+>"), "")   // Remove all other HTML tags
+
+        val decodedText = decodeHtmlEntities(textWithBreaks)
+
+        // Highlight the entire code block
+        val highlighted = highlightCode(decodedText, "dart", contextElement)
+
+        // Wrap in pre tag to preserve newlines and give proper code block styling
+        return """<pre style="margin: 8px 0; padding: 8px; background-color: $backgroundColor; font-family: monospace; white-space: pre-wrap;">$highlighted</pre>"""
     }
 
     /**
