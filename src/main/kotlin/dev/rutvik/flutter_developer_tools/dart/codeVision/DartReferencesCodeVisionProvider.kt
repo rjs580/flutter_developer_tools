@@ -39,13 +39,13 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
         return when (element) {
             // Non-abstract classes (exclude local classes inside functions)
             is DartClassDefinition -> {
-                !element.isAbstract && isTopLevelOrClassMember(element)
+                !element.isAbstract && !isLocalElement(element)
             }
 
             // Top-level functions (exclude main and local functions)
             is DartFunctionDeclarationWithBody -> {
                 val name = element.componentName.text
-                name != null && name != "main" && isTopLevelOrClassMember(element)
+                name != null && name != "main" && !isLocalElement(element)
             }
 
             // Methods (including getters, setters, operators)
@@ -62,10 +62,10 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
             is DartFactoryConstructorDeclaration -> true
 
             // Regular variables, fields, const fields (exclude local variables)
-            is DartVarDeclarationList -> isTopLevelOrClassMember(element)
+            is DartVarDeclarationList -> !isLocalElement(element)
 
-            // Enums
-            is DartEnumDefinition -> isTopLevelOrClassMember(element)
+            // Enums (exclude local enums)
+            is DartEnumDefinition -> !isLocalElement(element)
 
             // Enum constants
             is DartEnumConstantDeclaration -> true
@@ -84,19 +84,18 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
     }
 
     /**
-     * Checks if element is either top-level (direct child of DartFile) or a class member.
-     * This excludes local classes, functions, and variables defined inside function bodies.
+     * Checks if an element is local (defined inside a function body).
+     * Returns true for local classes, functions, and variables.
+     * Returns false for top-level and class member elements.
      */
-    private fun isTopLevelOrClassMember(element: PsiElement): Boolean {
+    private fun isLocalElement(element: PsiElement): Boolean {
         var parent = element.parent
         while (parent != null) {
             when (parent) {
-                // Top-level: direct child of file
-                is DartFile -> return true
-                // Class member
-                is DartClassMembers -> return true
-                // Inside a function body - this is local
-                is DartFunctionBody -> return false
+                // If we hit a function body before hitting file/class, it's local
+                is DartFunctionBody -> return true
+                // If we hit file or class members first, it's not local
+                is DartFile, is DartClassMembers -> return false
             }
             parent = parent.parent
         }
