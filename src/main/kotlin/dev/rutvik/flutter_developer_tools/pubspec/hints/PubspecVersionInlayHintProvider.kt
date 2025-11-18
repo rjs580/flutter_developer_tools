@@ -9,6 +9,8 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import dev.rutvik.flutter_developer_tools.api.PubDevApi
+import dev.rutvik.flutter_developer_tools.models.PubPackage
+import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils.isPubPackageName
 import dev.rutvik.flutter_developer_tools.utils.VersionUtils
@@ -18,7 +20,7 @@ import javax.swing.JPanel
 
 /**
  * Provides inlay hints showing available package updates in pubspec.yaml.
- * Displays hints like "Latest: 7.0.0 (Major Update)" next to package versions.
+ * Displays hints like "7.0.0 (Major Update)" next to package versions.
  */
 @Suppress("UnstableApiUsage")
 class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
@@ -26,10 +28,10 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
     override val key: SettingsKey<NoSettings> = SettingsKey("pubspec.version.hints")
     override val name: String = "Package version updates"
     override val previewText: String = """
-        dependencies:
-          provider: ^6.0.5
-          http: ^0.13.0
-    """.trimIndent()
+            dependencies:
+              provider: ^6.0.5
+              http: ^0.13.0
+        """.trimIndent()
 
     override fun createSettings(): NoSettings = NoSettings()
 
@@ -69,7 +71,16 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
 
             if (!PubspecUtils.isSimpleVersion(currentVersion)) return true
 
-            val pkgInfo = PubDevApi.waitForPackageInfo(pkgName) ?: return true
+            val cache = PubPackageCacheService.getInstance()
+            val pkgInfo = cache.getInfo(pkgName)
+
+            if (pkgInfo == null || pkgInfo.latestVersion == null) {
+                PubDevApi.requestDetailsIfNeeded(pkgName) { info ->
+                    cache.updateDetails(info)
+                }
+
+                return true
+            }
 
             val latestVersion = pkgInfo.latestVersion ?: return true
 
@@ -78,15 +89,23 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
 
             if (updateType == VersionUtils.UpdateType.NONE) return true
 
+            // Get safe upgrade version if available
+            val safeVersion = VersionUtils.getSafeUpgradeVersion(normalizedCurrent, pkgInfo.versions ?: emptyList())
+
             // Build the inlay hint presentation
-            val presentation = buildHintPresentation(latestVersion, updateType, pkgInfo)
+            val presentation = buildHintPresentation(
+                latestVersion,
+                safeVersion,
+                updateType,
+                pkgInfo
+            )
 
             // Add hint at the end of the line
             sink.addInlineElement(
                 offset = valueElement.textRange.endOffset,
                 relatesToPrecedingText = true,
                 presentation = presentation,
-                placeAtTheEndOfLine = true
+                placeAtTheEndOfLine = false
             )
 
             return true
@@ -94,8 +113,9 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
 
         private fun buildHintPresentation(
             latestVersion: String,
+            safeVersion: String?,
             updateType: VersionUtils.UpdateType,
-            pkgInfo: dev.rutvik.flutter_developer_tools.models.PubPackage,
+            pkgInfo: PubPackage,
         ): InlayPresentation {
             val updateLabel = VersionUtils.formatUpdateType(updateType)
 
@@ -104,9 +124,12 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
             // Add spacing
             parts.add(factory.textSpacePlaceholder(2, true))
 
-            // "Latest: 7.0.0"
-            parts.add(factory.smallText("Latest: "))
-            parts.add(factory.smallText(latestVersion))
+            // Show safe version if it's different from latest, otherwise show latest
+            if (safeVersion != null && safeVersion != latestVersion) {
+                parts.add(factory.smallText(safeVersion))
+            } else {
+                parts.add(factory.smallText(latestVersion))
+            }
 
             // " (Major Update)"
             if (updateLabel.isNotEmpty()) {
@@ -116,18 +139,25 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
             }
 
             // Add badges
+            if (pkgInfo.isFlutterFavorite) {
+                parts.add(factory.textSpacePlaceholder(1, true))
+                parts.add(factory.smallText("★"))
+                parts.add(factory.textSpacePlaceholder(1, true))
+                parts.add(createBadge("FLUTTER FAVORITE"))
+            }
+
             if (pkgInfo.isDiscontinued) {
-                parts.add(factory.smallText(" "))
-                parts.add(factory.roundWithBackground(
-                    factory.smallText("DISCONTINUED")
-                ))
+                parts.add(factory.textSpacePlaceholder(1, true))
+                parts.add(factory.smallText("⚠"))
+                parts.add(factory.textSpacePlaceholder(1, true))
+                parts.add(createBadge("DISCONTINUED"))
             }
 
             if (pkgInfo.isDart3Incompatible) {
-                parts.add(factory.smallText(" "))
-                parts.add(factory.roundWithBackground(
-                    factory.smallText("DART3-INCOMPATIBLE")
-                ))
+                parts.add(factory.textSpacePlaceholder(1, true))
+                parts.add(factory.smallText("⚠"))
+                parts.add(factory.textSpacePlaceholder(1, true))
+                parts.add(createBadge("DART3-INCOMPATIBLE"))
             }
 
             val sequence = SequencePresentation(parts)
@@ -136,6 +166,11 @@ class PubspecVersionInlayHintProvider : InlayHintsProvider<NoSettings> {
             return MenuOnClickPresentation(sequence, file.project) {
                 emptyList()
             }
+        }
+
+        private fun createBadge(text: String): InlayPresentation {
+            val textPresentation = factory.smallText(text)
+            return factory.roundWithBackground(textPresentation)
         }
     }
 

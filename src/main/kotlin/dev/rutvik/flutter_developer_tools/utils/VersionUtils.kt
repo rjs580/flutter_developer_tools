@@ -50,7 +50,7 @@ object VersionUtils {
         val normalized = PubspecUtils.normalizeVersionString(versionStr)
 
         // Pattern: major.minor.patch[-prerelease][+build]
-        val regex = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z\-.]+))?(?:\+([0-9A-Za-z\-.]+))?${'$'}""")
+        val regex = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z\-.]+))?(?:\+([0-9A-Za-z\-.]+))?$""")
         val match = regex.matchEntire(normalized) ?: return null
 
         val (major, minor, patch) = match.destructured
@@ -88,20 +88,23 @@ object VersionUtils {
     }
 
     /**
-     * Gets the safe upgrade version (skips major updates).
+     * Gets the safe upgrade version (highest version without major update).
      * Returns the highest version that doesn't increase the major version.
      */
-    fun getSafeUpgradeVersion(current: String, latest: String): String? {
+    fun getSafeUpgradeVersion(current: String, availableVersions: List<String>): String? {
         val currentVer = parseVersion(current) ?: return null
-        val latestVer = parseVersion(latest) ?: return null
 
-        // If latest is same or lower major version, it's safe
-        if (latestVer.major <= currentVer.major) {
-            return latest
-        }
+        // Filter versions to only those that are:
+        // 1. Same major version
+        // 2. Greater than current version
+        val safeVersions = availableVersions
+            .mapNotNull { parseVersion(it)?.let { ver -> ver to it } }
+            .filter { (ver, _) ->
+                ver.major == currentVer.major && ver > currentVer
+            }
+            .sortedByDescending { (ver, _) -> ver }
 
-        // Otherwise, keep the current major version (can't suggest a specific version without API data)
-        return null
+        return safeVersions.firstOrNull()?.second
     }
 
     /**

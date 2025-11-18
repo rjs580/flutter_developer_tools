@@ -8,6 +8,7 @@ import com.intellij.psi.PsiElement
 import dev.rutvik.flutter_developer_tools.api.PubDevApi
 import dev.rutvik.flutter_developer_tools.pubspec.quickfix.FullUpgradeQuickFix
 import dev.rutvik.flutter_developer_tools.pubspec.quickfix.SafeUpgradeQuickFix
+import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils.isPubPackageName
 import dev.rutvik.flutter_developer_tools.utils.VersionUtils
@@ -57,7 +58,16 @@ class PubPackageAnnotator : Annotator {
         val versionText = yamlScalar.textValue
         if (!PubspecUtils.isSimpleVersion(versionText)) return
 
-        val pkgInfo = PubDevApi.waitForPackageInfo(pkgName) ?: return
+        val cache = PubPackageCacheService.getInstance()
+        val pkgInfo = cache.getInfo(pkgName)
+
+        if (pkgInfo == null || pkgInfo.latestVersion == null) {
+            PubDevApi.requestDetailsIfNeeded(pkgName) { info ->
+                cache.updateDetails(info)
+            }
+
+            return
+        }
 
         val latestVersion = pkgInfo.latestVersion ?: return
 
@@ -87,8 +97,8 @@ class PubPackageAnnotator : Annotator {
             .textAttributes(CodeInsightColors.WEAK_WARNING_ATTRIBUTES)
 
         // Add quick fixes
-        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, latestVersion, runPubGet = false))
-        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, latestVersion, runPubGet = true))
+        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, pkgInfo, runPubGet = false))
+        builder.withFix(SafeUpgradeQuickFix(pkgName, normalizedCurrent, pkgInfo, runPubGet = true))
         builder.withFix(FullUpgradeQuickFix(pkgName, latestVersion, runPubGet = false))
         builder.withFix(FullUpgradeQuickFix(pkgName, latestVersion, runPubGet = true))
 

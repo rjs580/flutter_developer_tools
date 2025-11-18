@@ -1,15 +1,16 @@
+
 package dev.rutvik.flutter_developer_tools.pubspec.quickfix
 
 import com.intellij.codeInsight.intention.impl.BaseIntentionAction
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
+import dev.rutvik.flutter_developer_tools.models.PubPackage
+import dev.rutvik.flutter_developer_tools.utils.FlutterUtils
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
 import dev.rutvik.flutter_developer_tools.utils.VersionUtils
-import io.flutter.pub.PubRoot
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
 
@@ -19,19 +20,25 @@ import org.jetbrains.yaml.psi.YAMLScalar
 class SafeUpgradeQuickFix(
     private val packageName: String,
     private val currentVersion: String,
-    private val latestVersion: String,
+    private val packageInfo: PubPackage,
     private val runPubGet: Boolean
 ) : BaseIntentionAction() {
 
     override fun getText(): String {
-        val action = if (runPubGet) "and run pub get" else "only"
-        return "Safe upgrade to latest (skip major) $action"
+        val safeVersion = VersionUtils.getSafeUpgradeVersion(currentVersion, packageInfo.versions ?: emptyList())
+        val versionText = safeVersion?.let { " to $it" } ?: ""
+        val action = if (runPubGet) "and run pub get" else ""
+        return "Safe upgrade$versionText (skip major) $action".trim()
     }
 
     override fun getFamilyName(): String = "Upgrade package safely"
 
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile?): Boolean {
-        return PubspecUtils.isPubspecFile(file)
+        if (!PubspecUtils.isPubspecFile(file)) return false
+
+        // Only show if there's a safe upgrade available
+        val safeVersion = VersionUtils.getSafeUpgradeVersion(currentVersion, packageInfo.versions ?: emptyList())
+        return safeVersion != null
     }
 
     override fun invoke(project: Project, editor: Editor?, file: PsiFile?) {
@@ -46,13 +53,9 @@ class SafeUpgradeQuickFix(
         if (yamlKv.keyText != packageName) return
 
         // Determine the safe version to upgrade to
-        val updateType = VersionUtils.getUpdateType(currentVersion, latestVersion)
-        val targetVersion = if (updateType == VersionUtils.UpdateType.MAJOR) {
-            // For major updates, suggest keeping current major version
-            // In a real scenario, you'd query pub.dev for the highest version with the same major
-            currentVersion
-        } else {
-            latestVersion
+        val targetVersion = VersionUtils.getSafeUpgradeVersion(currentVersion, packageInfo.versions ?: emptyList())
+        if (targetVersion == null) {
+            return
         }
 
         WriteCommandAction.runWriteCommandAction(project) {
@@ -61,14 +64,7 @@ class SafeUpgradeQuickFix(
         }
 
         if (runPubGet) {
-            runFlutterPubGet(project, file)
-        }
-    }
-
-    private fun runFlutterPubGet(project: Project, file: PsiFile) {
-        ApplicationManager.getApplication().invokeLater {
-            val pubRoot = PubRoot.forFile(file.virtualFile) ?: return@invokeLater
-            pubRoot.refresh()
+            FlutterUtils.runFlutterPubGet(project, file)
         }
     }
 }
@@ -83,8 +79,8 @@ class FullUpgradeQuickFix(
 ) : BaseIntentionAction() {
 
     override fun getText(): String {
-        val action = if (runPubGet) "and run pub get" else "only"
-        return "Upgrade to latest ($latestVersion) $action"
+        val action = if (runPubGet) "and run pub get" else ""
+        return "Upgrade to $latestVersion $action".trim()
     }
 
     override fun getFamilyName(): String = "Upgrade package to latest"
@@ -110,14 +106,7 @@ class FullUpgradeQuickFix(
         }
 
         if (runPubGet) {
-            runFlutterPubGet(project, file)
-        }
-    }
-
-    private fun runFlutterPubGet(project: Project, file: PsiFile) {
-        ApplicationManager.getApplication().invokeLater {
-            val pubRoot = PubRoot.forFile(file.virtualFile) ?: return@invokeLater
-            pubRoot.refresh()
+            FlutterUtils.runFlutterPubGet(project, file)
         }
     }
 }
