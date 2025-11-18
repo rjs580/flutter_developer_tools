@@ -86,8 +86,7 @@ object PubDevApi {
                     val likes = jsonScore["likeCount"]?.asInt ?: 0
                     val pubPoints = jsonScore["grantedPoints"]?.asInt ?: 0
 
-                    val tags = jsonScore.getAsJsonArray("tags")?.map { it.asString } ?: emptyList()
-                    val isFlutterFavorite = tags.contains("is:flutter-favorite")
+                    val tags = jsonScore.getAsJsonArray("tags")?.map { it.asString }
 
                     // Invoke callback on EDT to prevent UI threading issues
                     ApplicationManager.getApplication().invokeLater {
@@ -96,11 +95,11 @@ object PubDevApi {
                                 name,
                                 latestVersion,
                                 description,
-                                isFlutterFavorite,
                                 likes,
                                 pubPoints,
+                                tags,
                                 repositoryUrl,
-                                homepageUrl
+                                homepageUrl,
                             )
                         )
                     }
