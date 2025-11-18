@@ -1,18 +1,15 @@
 
 package dev.rutvik.flutter_developer_tools.dart.documentation
 
+import com.intellij.lang.Language
 import com.intellij.lang.documentation.DocumentationProvider
-import com.intellij.openapi.editor.DefaultLanguageHighlighterColors
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.editor.colors.EditorColorsManager
-import com.intellij.openapi.editor.colors.TextAttributesKey
-import com.intellij.openapi.editor.markup.TextAttributes
+import com.intellij.openapi.editor.richcopy.HtmlSyntaxInfoUtil
 import com.intellij.psi.PsiElement
-import com.jetbrains.lang.dart.highlight.DartSyntaxHighlighterColors
-import com.jetbrains.lang.dart.highlight.DartSyntaxHighlighter
-import org.intellij.markdown.MarkdownElementTypes
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
-import org.intellij.markdown.html.HtmlGenerator
-import org.intellij.markdown.parser.MarkdownParser
+import com.intellij.ui.ColorUtil
+import com.jetbrains.lang.dart.DartLanguage
+import org.jetbrains.yaml.YAMLLanguage
 
 /**
  * Enhanced documentation provider for Dart elements that properly highlights
@@ -23,18 +20,12 @@ import org.intellij.markdown.parser.MarkdownParser
  */
 class DartEnhancedDocumentationProvider : DocumentationProvider {
 
-    private val markdownFlavour = GFMFlavourDescriptor()
-
     override fun generateDoc(element: PsiElement?, originalElement: PsiElement?): String? {
         element ?: return null
 
         // Get the standard Dart documentation
         val dartDocProvider = com.jetbrains.lang.dart.ide.documentation.DartDocumentationProvider()
         val originalDoc = dartDocProvider.generateDoc(element, originalElement) ?: return null
-
-        println("=====================")
-        println(originalDoc)
-        println("=====================")
 
         // Enhance code blocks with syntax highlighting
         return enhanceDocumentationWithSyntaxHighlighting(originalDoc, element)
@@ -46,9 +37,8 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
     }
 
     /**
-     * Enhances documentation by finding code blocks and applying Dart syntax highlighting.
-     * Handles both markdown-style code blocks and HTML pre/code blocks.
-     * Preserves all other HTML content unchanged.
+     * Enhances documentation by finding code blocks and applying syntax highlighting.
+     * Uses IntelliJ's HtmlSyntaxInfoUtil for consistent highlighting across the IDE.
      */
     private fun enhanceDocumentationWithSyntaxHighlighting(
         documentation: String,
@@ -56,194 +46,118 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
     ): String {
         var enhanced = documentation
 
-        // First, handle markdown code blocks (```dart or ```)
-        // These might exist in raw dartdoc comments
-        val markdownCodePattern = Regex(
-            """```(?:dart)?\s*\n([\s\S]*?)```""",
+        // Get background color for code blocks
+        val backgroundColor = getCodeBackgroundColor()
+
+        // Handle markdown code blocks with language specification (```dart, ```yaml, etc.)
+        val markdownCodeWithLangPattern = Regex(
+            """```(\w+)?\s*\n([\s\S]*?)```""",
             RegexOption.MULTILINE
         )
 
-        enhanced = markdownCodePattern.replace(enhanced) { matchResult ->
-            val code = matchResult.groups[1]?.value ?: return@replace matchResult.value
-            val highlightedCode = highlightDartCodeWithColorScheme(code.trim(), contextElement)
-            """<pre style="margin: 8px 0; padding: 8px; background-color: transparent; font-family: monospace;">$highlightedCode</pre>"""
+        enhanced = markdownCodeWithLangPattern.replace(enhanced) { matchResult ->
+            val language = matchResult.groups[1]?.value?.lowercase() ?: "dart"
+            val code = matchResult.groups[2]?.value ?: return@replace matchResult.value
+            val highlightedCode = highlightCode(code.trim(), language, contextElement)
+            """<pre style="margin: 8px 0; padding: 8px; background-color: $backgroundColor; font-family: monospace;">$highlightedCode</pre>"""
         }
 
-        // Handle HTML <pre><code> blocks that Dart documentation generates
-        val preCodePattern = Regex(
-            """<pre><code>([\s\S]*?)</code></pre>""",
+        // Handle HTML <pre><code class="language-*"> blocks (with language detection)
+        val preCodeWithClassPattern = Regex(
+            """<pre><code(?:\s+class="language-(\w+)")?\s*>([\s\S]*?)</code></pre>""",
             RegexOption.MULTILINE
         )
 
-        enhanced = preCodePattern.replace(enhanced) { matchResult ->
-            val encodedCode = matchResult.groups[1]?.value ?: return@replace matchResult.value
-
-            // Decode HTML entities back to actual code
+        enhanced = preCodeWithClassPattern.replace(enhanced) { matchResult ->
+            val language = matchResult.groups[1]?.value?.lowercase() ?: "dart"
+            val encodedCode = matchResult.groups[2]?.value ?: return@replace matchResult.value
             val code = decodeHtmlEntities(encodedCode).trim()
 
-            // Skip if it's empty
             if (code.isEmpty()) return@replace matchResult.value
 
-            // Apply Dart syntax highlighting
-            val highlightedCode = highlightDartCodeWithColorScheme(code, contextElement)
-
-            // Return the enhanced code block with preserved formatting
-            """<pre style="margin: 8px 0; padding: 8px; background-color: transparent; font-family: monospace; white-space: pre-wrap;">$highlightedCode</pre>"""
+            val highlightedCode = highlightCode(code, language, contextElement)
+            """<pre style="margin: 8px 0; padding: 8px; background-color: $backgroundColor; font-family: monospace; white-space: pre-wrap;">$highlightedCode</pre>"""
         }
 
-        // Handle standalone <code> tags (inline code)
-        val inlineCodePattern = Regex("""(?<!<pre>)<code>([^<]+)</code>(?!</pre>)""")
+        // Handle standalone <code> tags (inline code) - always apply highlighting
+        val inlineCodePattern = Regex("""(?<!<pre>)<code(?:\s+class="language-(\w+)")?>([^<]+)</code>(?!</pre>)""")
         enhanced = inlineCodePattern.replace(enhanced) { matchResult ->
-            val encodedCode = matchResult.groups[1]?.value ?: return@replace matchResult.value
+            val language = matchResult.groups[1]?.value?.lowercase() ?: "dart"
+            val encodedCode = matchResult.groups[2]?.value ?: return@replace matchResult.value
             val code = decodeHtmlEntities(encodedCode)
 
-            // For inline code, only highlight if it looks like Dart code
-            if (shouldHighlightInline(code)) {
-                val highlighted = highlightDartCodeWithColorScheme(code, contextElement)
-                """<code style="font-family: monospace;">$highlighted</code>"""
-            } else {
-                // Keep simple text as-is
-                """<code style="font-family: monospace;">${escapeHtml(code)}</code>"""
-            }
+            val highlighted = highlightCode(code, language, contextElement)
+            """<code style="font-family: monospace; background-color: $backgroundColor; padding: 2px 4px;">$highlighted</code>"""
         }
 
         return enhanced
     }
 
     /**
-     * Determines if inline code should be syntax highlighted.
-     * Checks for Dart keywords, operators, or typical code patterns.
+     * Gets the background color for code blocks from the current color scheme.
      */
-    private fun shouldHighlightInline(code: String): Boolean {
-        val dartPatterns = listOf(
-            Regex("""\b(class|void|var|final|const|if|for|return|import|extends|implements|with|mixin|enum|abstract)\b"""),
-            Regex("""[{}()\[\]<>]"""),  // Brackets
-            Regex("""=>"""),  // Arrow function
-            Regex("""\.\w+\(""")  // Method calls
-        )
-        return dartPatterns.any { it.containsMatchIn(code) }
+    private fun getCodeBackgroundColor(): String {
+        return try {
+            val scheme = EditorColorsManager.getInstance().globalScheme
+            val backgroundColor = scheme.defaultBackground
+            // Make it slightly different from the default background
+            val adjustedColor = ColorUtil.darker(backgroundColor, 1)
+            ColorUtil.toHtmlColor(adjustedColor)
+        } catch (e: Exception) {
+            "#f5f5f5" // Fallback light gray
+        }
     }
 
     /**
-     * Highlights Dart code using the IDE's color scheme for proper theming.
-     * Uses Dart-specific syntax highlighter with appropriate text attribute keys.
+     * Highlights code using IntelliJ's HtmlSyntaxInfoUtil with language detection.
+     * Supports multiple languages like Dart, YAML, etc.
      */
-    private fun highlightDartCodeWithColorScheme(code: String, contextElement: PsiElement): String {
-        try {
-            val colorsScheme = EditorColorsManager.getInstance().globalScheme
-            val highlighter = DartSyntaxHighlighter()
-            val htmlBuilder = StringBuilder()
+    private fun highlightCode(code: String, languageId: String, contextElement: PsiElement): String {
+        return try {
+            val project = contextElement.project
+            val language = detectLanguage(languageId)
+            val buffer = StringBuilder()
 
-            val lexer = highlighter.highlightingLexer
-            lexer.start(code)
-
-            while (lexer.tokenType != null) {
-                val tokenText = lexer.tokenText
-                val tokenType = lexer.tokenType
-
-                // Get the highlighting attributes for this token type
-                val keys = highlighter.getTokenHighlights(tokenType)
-
-                if (keys.isNotEmpty()) {
-                    // Use the first (most specific) attribute key
-                    val textAttributes = colorsScheme.getAttributes(keys[0])
-
-                    if (textAttributes != null && textAttributes.foregroundColor != null) {
-                        htmlBuilder.append(formatWithColorScheme(tokenText, textAttributes))
-                    } else {
-                        // Fallback to default highlighting for this token type
-                        htmlBuilder.append(formatWithDefaultHighlighting(tokenText, keys[0], colorsScheme))
-                    }
-                } else {
-                    // No specific highlighting, use escaped plain text
-                    htmlBuilder.append(escapeHtml(tokenText))
-                }
-
-                lexer.advance()
+            // Use ReadAction to safely access PSI and perform highlighting
+            ReadAction.compute<String, Exception> {
+                HtmlSyntaxInfoUtil.appendHighlightedByLexerAndEncodedAsHtmlCodeSnippet(
+                    buffer,
+                    project,
+                    language,
+                    code,
+                    true,  // doTrimIndent
+                    1.0f   // saturationFactor - 1.0f means use colors as-is from the theme
+                )
+                buffer.toString()
             }
-
-            return htmlBuilder.toString()
         } catch (e: Exception) {
             // Fallback: return escaped code without highlighting
-            return escapeHtml(code)
+            escapeHtml(code)
         }
     }
 
     /**
-     * Formats text with HTML spans applying the color scheme's text attributes.
-     * This ensures the code highlighting matches the user's IDE theme.
+     * Detects the Language instance based on the language identifier string.
+     * Supports common languages found in Dart/Flutter documentation.
      */
-    private fun formatWithColorScheme(text: String, attributes: TextAttributes): String {
-        val styles = mutableListOf<String>()
-
-        // Apply foreground color from the color scheme
-        attributes.foregroundColor?.let { color ->
-            val rgb = String.format("#%02x%02x%02x", color.red, color.green, color.blue)
-            styles.add("color: $rgb")
-        }
-
-        // Apply background color if set (for specific highlights)
-        attributes.backgroundColor?.let { color ->
-            if (color.alpha > 0) {  // Only apply if not fully transparent
-                val rgb = String.format("#%02x%02x%02x", color.red, color.green, color.blue)
-                styles.add("background-color: $rgb")
-            }
-        }
-
-        // Apply font styling (bold, italic)
-        if (attributes.fontType and java.awt.Font.BOLD != 0) {
-            styles.add("font-weight: bold")
-        }
-        if (attributes.fontType and java.awt.Font.ITALIC != 0) {
-            styles.add("font-style: italic")
-        }
-
-        val escapedText = escapeHtml(text)
-
-        return if (styles.isNotEmpty()) {
-            """<span style="${styles.joinToString("; ")}">$escapedText</span>"""
-        } else {
-            escapedText
-        }
-    }
-
-    /**
-     * Applies default highlighting based on text attribute key type.
-     * Used as fallback when specific colors aren't defined.
-     */
-    private fun formatWithDefaultHighlighting(
-        text: String,
-        key: TextAttributesKey,
-        colorsScheme: com.intellij.openapi.editor.colors.EditorColorsScheme
-    ): String {
-        // Try to get default language highlighter colors
-        val defaultKey = when {
-            key == DartSyntaxHighlighterColors.KEYWORD -> DefaultLanguageHighlighterColors.KEYWORD
-            key == DartSyntaxHighlighterColors.NUMBER -> DefaultLanguageHighlighterColors.NUMBER
-            key == DartSyntaxHighlighterColors.STRING -> DefaultLanguageHighlighterColors.STRING
-            key == DartSyntaxHighlighterColors.LINE_COMMENT ||
-                    key == DartSyntaxHighlighterColors.BLOCK_COMMENT ||
-                    key == DartSyntaxHighlighterColors.DOC_COMMENT -> DefaultLanguageHighlighterColors.LINE_COMMENT
-            key == DartSyntaxHighlighterColors.OPERATION_SIGN -> DefaultLanguageHighlighterColors.OPERATION_SIGN
-            key == DartSyntaxHighlighterColors.PARENTHS ||
-                    key == DartSyntaxHighlighterColors.BRACKETS ||
-                    key == DartSyntaxHighlighterColors.BRACES -> DefaultLanguageHighlighterColors.BRACES
-            key == DartSyntaxHighlighterColors.CLASS -> DefaultLanguageHighlighterColors.CLASS_NAME
-            else -> null
-        }
-
-        val attributes = defaultKey?.let { colorsScheme.getAttributes(it) }
-
-        return if (attributes != null) {
-            formatWithColorScheme(text, attributes)
-        } else {
-            escapeHtml(text)
+    private fun detectLanguage(languageId: String): Language {
+        return when (languageId.lowercase()) {
+            "dart" -> DartLanguage.INSTANCE
+            "yaml", "yml" -> YAMLLanguage.INSTANCE
+            "json" -> Language.findLanguageByID("JSON") ?: DartLanguage.INSTANCE
+            "xml", "html" -> Language.findLanguageByID("XML") ?: DartLanguage.INSTANCE
+            "kotlin", "kt" -> Language.findLanguageByID("kotlin") ?: DartLanguage.INSTANCE
+            "java" -> Language.findLanguageByID("JAVA") ?: DartLanguage.INSTANCE
+            "javascript", "js" -> Language.findLanguageByID("JavaScript") ?: DartLanguage.INSTANCE
+            "typescript", "ts" -> Language.findLanguageByID("TypeScript") ?: DartLanguage.INSTANCE
+            "swift" -> Language.findLanguageByID("Swift") ?: DartLanguage.INSTANCE
+            "objectivec", "objc" -> Language.findLanguageByID("ObjectiveC") ?: DartLanguage.INSTANCE
+            else -> DartLanguage.INSTANCE // Default to Dart
         }
     }
 
     /**
      * Decodes HTML entities to get the actual code text.
-     * This is necessary because the Dart documentation provider HTML-encodes code blocks.
      */
     private fun decodeHtmlEntities(html: String): String {
         return html
@@ -267,26 +181,5 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
-    }
-
-    /**
-     * Converts markdown documentation to HTML using the GFM flavour.
-     * This method processes markdown and applies custom code block highlighting.
-     */
-    private fun convertMarkdownToHtml(markdown: String, contextElement: PsiElement): String {
-        return try {
-            // Parse markdown to AST
-            val parsedTree = MarkdownParser(markdownFlavour).buildMarkdownTreeFromString(markdown)
-
-            // Generate HTML from markdown
-            var html = HtmlGenerator(markdown, parsedTree, markdownFlavour).generateHtml()
-
-            // Post-process to add syntax highlighting to code blocks
-            html = enhanceDocumentationWithSyntaxHighlighting(html, contextElement)
-
-            html
-        } catch (e: Exception) {
-            "<pre>${escapeHtml(markdown)}</pre>"
-        }
     }
 }

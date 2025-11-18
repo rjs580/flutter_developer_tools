@@ -39,19 +39,32 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <h3>Version 1.0.0 - Initial Release</h3>
-            <h4>Features</h4>
-            <ul>
-                <li><b>Smart Package Auto-completion</b>: Auto-complete pub.dev packages with Flutter Favorites badge and likes count</li>
-                <li><b>Intelligent Package Insights</b>: Hover over package names to view comprehensive README documentation with repository links</li>
-                <li><b>Version Changelog Access</b>: Hover over version numbers to see CHANGELOG with version history</li>
-                <li><b>Direct Package Navigation</b>: CMD+click (or CTRL+click) on package names and versions to open pub.dev pages</li>
-                <li><b>Update Notifications</b>: Inlay hints showing available updates with categorization (Major/Minor/Patch)</li>
-                <li><b>Safe Upgrade Quick Fixes</b>: One-click safe upgrades (skip major versions) and full upgrades with optional pub get execution</li>
-                <li><b>Package Health Indicators</b>: Visual warnings for discontinued and Dart 3 incompatible packages</li>
-                <li><b>Multi-Repository Support</b>: Fetches documentation from GitHub, GitLab, Bitbucket, Codeberg, and SourceHut</li>
-                <li><b>Monorepo Intelligence</b>: Automatically handles packages in monorepo structures</li>
-            </ul>
+        <h3>Version 1.0.0</h3>
+        <h4>Pubspec.yaml Intelligence</h4>
+        <ul>
+            <li><b>Smart Auto-completion</b>: Pub.dev package suggestions with popularity indicators</li>
+            <li><b>Package Documentation</b>: Hover for README and CHANGELOG with repository links</li>
+            <li><b>Update Management</b>: Inline hints with safe/full upgrade quick fixes</li>
+            <li><b>Health Warnings</b>: Visual badges for discontinued and incompatible packages</li>
+            <li><b>Quick Navigation</b>: Click-through to pub.dev package and version pages</li>
+        </ul>
+
+        <h4>Dart Code Enhancement</h4>
+        <ul>
+            <li><b>Syntax-Highlighted Documentation</b>: Code examples in hover docs respect your IDE color scheme</li>
+            <li><b>Enhanced Breadcrumbs</b>: Navigate through classes, methods, constructors, mixins, enums, extensions, getters, and setters</li>
+            <li><b>Parameter Hints</b>: Show parameter names for non-named arguments</li>
+            <li><b>Type Hints</b>: Display inferred types for variables and parameters</li>
+            <li><b>Code Lens</b>: Usage counts and implementation counts for code elements</li>
+        </ul>
+
+        <h4>Additional Features</h4>
+        <ul>
+            <li>Multi-repository support (GitHub, GitLab, Bitbucket, Codeberg, SourceHut)</li>
+            <li>Monorepo-aware package documentation fetching</li>
+            <li>Configurable hint display options</li>
+            <li>Cache management for optimal performance</li>
+        </ul>
         """.trimIndent()
     }
 
