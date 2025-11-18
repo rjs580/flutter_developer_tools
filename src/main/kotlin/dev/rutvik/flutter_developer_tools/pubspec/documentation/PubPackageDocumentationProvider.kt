@@ -95,11 +95,14 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         val pkgInfo = waitForPackageInfo(pkgName, cache)
             ?: return buildLoadingDoc(pkgName, "package information")
 
-        val repositoryUrl = pkgInfo.repositoryUrl
-            ?: return buildBasicPackageDoc(pkgName, pkgInfo)
+        // Try repository URL first, fall back to homepage URL
+        val repoUrl = pkgInfo.repositoryUrl ?: pkgInfo.homepageUrl
+        if (repoUrl == null) {
+            return buildBasicPackageDoc(pkgName, pkgInfo)
+        }
 
         val readmeFuture = CompletableFuture.supplyAsync {
-            RepositoryMarkdownFetcher.fetchReadme(repositoryUrl, pkgName)
+            RepositoryMarkdownFetcher.fetchReadme(repoUrl, pkgName)
         }
 
         val readme = try {
@@ -108,7 +111,7 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
             null
         }
 
-        return buildPackageDocWithReadme(pkgName, pkgInfo, readme, repositoryUrl)
+        return buildPackageDocWithReadme(pkgName, pkgInfo, readme, repoUrl)
     }
 
     private fun generateVersionDoc(yamlScalar: YAMLScalar): String? {
@@ -139,11 +142,14 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         val pkgInfo = waitForPackageInfo(pkgName, cache)
             ?: return buildLoadingDoc(pkgName, "version information")
 
-        val repositoryUrl = pkgInfo.repositoryUrl
-            ?: return buildBasicVersionDoc(pkgName, normalizedVersion)
+        // Try repository URL first, fall back to homepage URL
+        val repoUrl = pkgInfo.repositoryUrl ?: pkgInfo.homepageUrl
+        if (repoUrl == null) {
+            return buildBasicVersionDoc(pkgName, normalizedVersion)
+        }
 
         val changelogFuture = CompletableFuture.supplyAsync {
-            RepositoryMarkdownFetcher.fetchChangelog(repositoryUrl, pkgName)
+            RepositoryMarkdownFetcher.fetchChangelog(repoUrl, pkgName)
         }
 
         val changelog = try {
@@ -152,7 +158,7 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
             null
         }
 
-        return buildVersionDocWithChangelog(pkgName, normalizedVersion, changelog, repositoryUrl)
+        return buildVersionDocWithChangelog(pkgName, normalizedVersion, changelog, repoUrl)
     }
 
     private fun waitForPackageInfo(pkgName: String, cache: PubPackageCacheService): PubPackage? {
@@ -205,7 +211,16 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
             addPackageMetadata(pkgInfo)
 
             append("<p><a href='https://pub.dev/packages/$pkgName'>View on pub.dev</a></p>")
-            append("<p><i>Repository not available</i></p>")
+
+            // Show homepage if available, even without repository
+            pkgInfo.homepageUrl?.let { homepage ->
+                append("<p><a href='$homepage'>Homepage</a></p>")
+            }
+
+            if (pkgInfo.repositoryUrl == null && pkgInfo.homepageUrl == null) {
+                append("<p><i>Repository not available</i></p>")
+            }
+
             append(DocumentationMarkup.CONTENT_END)
         }
     }
@@ -214,7 +229,7 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         pkgName: String,
         pkgInfo: PubPackage,
         readme: String?,
-        repositoryUrl: String
+        repoUrl: String
     ): String {
         return buildString {
             append(DocumentationMarkup.DEFINITION_START)
@@ -228,13 +243,18 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
 
             append("<p>")
             append("<a href='https://pub.dev/packages/$pkgName'>View on pub.dev</a>")
-            append(" • <a href='$repositoryUrl'>Repository</a>")
+
+            // Determine if this is a repository or homepage
+            val isRepository = pkgInfo.repositoryUrl != null && pkgInfo.repositoryUrl == repoUrl
+            val linkText = if (isRepository) "Repository" else "Homepage"
+            append(" • <a href='$repoUrl'>$linkText</a>")
+
             append("</p>")
 
             append("<hr/>")
 
             if (readme != null) {
-                val resolvedMarkdown = RepositoryMarkdownFetcher.resolveImageUrls(readme, repositoryUrl)
+                val resolvedMarkdown = RepositoryMarkdownFetcher.resolveImageUrls(readme, repoUrl)
                 val html = convertMarkdownToHtml(resolvedMarkdown)
                 append(html)
             } else {
@@ -262,7 +282,7 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         pkgName: String,
         version: String,
         changelog: String?,
-        repositoryUrl: String
+        repoUrl: String
     ): String {
         return buildString {
             append(DocumentationMarkup.DEFINITION_START)
@@ -273,13 +293,13 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
 
             append("<p>")
             append("<a href='https://pub.dev/packages/$pkgName/versions/$version'>View version details</a>")
-            append(" • <a href='$repositoryUrl'>Repository</a>")
+            append(" • <a href='$repoUrl'>Repository</a>")
             append("</p>")
 
             append("<hr/>")
 
             if (changelog != null) {
-                val resolvedMarkdown = RepositoryMarkdownFetcher.resolveImageUrls(changelog, repositoryUrl)
+                val resolvedMarkdown = RepositoryMarkdownFetcher.resolveImageUrls(changelog, repoUrl)
                 val html = convertMarkdownToHtml(resolvedMarkdown)
                 append(html)
             } else {

@@ -21,8 +21,25 @@ object RepositoryMarkdownFetcher {
      * @param packageName Optional package name to search for in common monorepo locations
      */
     fun fetchReadme(repositoryUrl: String, packageName: String? = null): String? {
-        val readmeUrls = buildRawFileUrls(repositoryUrl, "README.md", packageName)
-        return fetchFirstAvailable(readmeUrls)
+        // Try multiple README variants
+        val readmeVariants = listOf(
+            "README.md",
+            "Readme.md",
+            "readme.md",
+            "README.MD",
+            "README",
+            "readme"
+        )
+
+        for (variant in readmeVariants) {
+            val urls = buildRawFileUrls(repositoryUrl, variant, packageName)
+            val content = fetchFirstAvailable(urls)
+            if (content != null) {
+                return content
+            }
+        }
+
+        return null
     }
 
     /**
@@ -33,10 +50,29 @@ object RepositoryMarkdownFetcher {
      * @param packageName Optional package name to search for in common monorepo locations
      */
     fun fetchChangelog(repositoryUrl: String, packageName: String? = null): String? {
-        val changelogFiles = listOf("CHANGELOG.md", "CHANGES.md", "HISTORY.md", "RELEASES.md")
+        // Try multiple changelog variants
+        val changelogVariants = listOf(
+            "CHANGELOG.md",
+            "Changelog.md",
+            "changelog.md",
+            "CHANGELOG.MD",
+            "CHANGELOG",
+            "CHANGES.md",
+            "Changes.md",
+            "changes.md",
+            "HISTORY.md",
+            "History.md",
+            "history.md",
+            "RELEASES.md",
+            "Releases.md",
+            "releases.md",
+            "NEWS.md",
+            "News.md",
+            "news.md"
+        )
 
-        for (filename in changelogFiles) {
-            val urls = buildRawFileUrls(repositoryUrl, filename, packageName)
+        for (variant in changelogVariants) {
+            val urls = buildRawFileUrls(repositoryUrl, variant, packageName)
             val content = fetchFirstAvailable(urls)
             if (content != null) {
                 return content
@@ -165,14 +201,16 @@ object RepositoryMarkdownFetcher {
         // If packageName is provided, try common monorepo patterns
         else if (packageName != null) {
             val monorepoPatterns = listOf(
-                "packages/$packageName",  // packages/provider
-                "pkgs/$packageName",      // pkgs/provider
-                packageName,              // provider (root)
-                "$packageName/$packageName" // provider/provider (some repos use this)
+                "packages/$packageName",     // packages/provider
+                "pkgs/$packageName",          // pkgs/provider
+                packageName,                  // provider (root) - THIS WAS MISSING the / before filename
+                "$packageName/$packageName",  // provider/provider (some repos use this)
+                ""                            // Root of repository as fallback
             )
 
             for (pattern in monorepoPatterns) {
-                urls.addAll(buildUrlsForHost(repoInfo, "$pattern/$filename"))
+                val filePath = if (pattern.isEmpty()) filename else "$pattern/$filename"
+                urls.addAll(buildUrlsForHost(repoInfo, filePath))
             }
         }
         // Default: root of repository
