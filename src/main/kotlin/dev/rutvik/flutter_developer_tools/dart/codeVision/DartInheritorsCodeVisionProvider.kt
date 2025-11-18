@@ -44,9 +44,14 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
     override fun getHint(element: PsiElement, file: PsiFile): String? {
         if (element !is DartComponent) return null
 
-        val anchor = element.componentName ?: return null
+        // Ensure Dart analysis server is ready
         val project = element.project
         val das = DartAnalysisServerService.getInstance(project)
+        if (!das.isServerProcessActive) {
+            return null
+        }
+
+        val anchor = element.componentName ?: return null
         val items = das.search_getTypeHierarchy(
             file.virtualFile,
             anchor.textRange.startOffset,
@@ -110,6 +115,10 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
             findUsagesTitle,
             DefaultPsiElementCellRenderer()
         )
+    }
+
+    override fun preparePreview(editor: Editor, file: PsiFile) {
+        // Skip preview computation for performance
     }
 
     override val relativeOrderings: List<CodeVisionRelativeOrdering>

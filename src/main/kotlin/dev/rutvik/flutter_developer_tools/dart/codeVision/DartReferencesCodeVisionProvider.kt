@@ -1,3 +1,4 @@
+
 package dev.rutvik.flutter_developer_tools.dart.codeVision
 
 import com.intellij.codeInsight.codeVision.CodeVisionRelativeOrdering
@@ -10,6 +11,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.ui.awt.RelativePoint
+import com.jetbrains.lang.dart.analyzer.DartAnalysisServerService
 import com.jetbrains.lang.dart.ide.findUsages.DartServerFindUsagesHandler
 import com.jetbrains.lang.dart.psi.*
 import com.jetbrains.lang.dart.test.DartTestSourcesFilter
@@ -35,21 +37,79 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
         if (!element.manager.isInProject(element)) return false
 
         return when (element) {
-            is DartClassDefinition -> !element.isAbstract
+            // Non-abstract classes (exclude local classes inside functions)
+            is DartClassDefinition -> {
+                !element.isAbstract && isTopLevelOrClassMember(element)
+            }
+
+            // Top-level functions (exclude main and local functions)
             is DartFunctionDeclarationWithBody -> {
                 val name = element.componentName.text
-                name != null && name != "main"
+                name != null && name != "main" && isTopLevelOrClassMember(element)
             }
+
+            // Methods (including getters, setters, operators)
             is DartMethodDeclaration -> !element.isAbstract
-            is DartVarDeclarationList -> {
-                // Skip private variables in code vision
-                element.varAccessDeclaration.componentName.text?.startsWith("_") != true
-            }
+
+            // Getters
+            is DartGetterDeclaration -> true
+
+            // Setters
+            is DartSetterDeclaration -> true
+
+            // Named constructors, factory constructors, const constructors
+            is DartNamedConstructorDeclaration -> true
+            is DartFactoryConstructorDeclaration -> true
+
+            // Regular variables, fields, const fields (exclude local variables)
+            is DartVarDeclarationList -> isTopLevelOrClassMember(element)
+
+            // Enums
+            is DartEnumDefinition -> isTopLevelOrClassMember(element)
+
+            // Enum constants
+            is DartEnumConstantDeclaration -> true
+
+            // Mixins
+            is DartMixinDeclaration -> true
+
+            // Extensions
+            is DartExtensionDeclaration -> true
+
+            // Type aliases
+            is DartFunctionTypeAlias -> true
+
             else -> false
         }
     }
 
+    /**
+     * Checks if element is either top-level (direct child of DartFile) or a class member.
+     * This excludes local classes, functions, and variables defined inside function bodies.
+     */
+    private fun isTopLevelOrClassMember(element: PsiElement): Boolean {
+        var parent = element.parent
+        while (parent != null) {
+            when (parent) {
+                // Top-level: direct child of file
+                is DartFile -> return true
+                // Class member
+                is DartClassMembers -> return true
+                // Inside a function body - this is local
+                is DartFunctionBody -> return false
+            }
+            parent = parent.parent
+        }
+        return false
+    }
+
     override fun getHint(element: PsiElement, file: PsiFile): String? {
+        // Ensure Dart analysis server is ready
+        val das = DartAnalysisServerService.getInstance(element.project)
+        if (!das.isServerProcessActive) {
+            return null
+        }
+
         val el = when (element) {
             is DartVarDeclarationList -> element.varAccessDeclaration
             is DartComponent -> element
@@ -117,6 +177,10 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
             actualElement,
             if (event == null) null else RelativePoint(event)
         )
+    }
+
+    override fun preparePreview(editor: Editor, file: PsiFile) {
+        // Skip preview computation for performance
     }
 
     override val relativeOrderings: List<CodeVisionRelativeOrdering>

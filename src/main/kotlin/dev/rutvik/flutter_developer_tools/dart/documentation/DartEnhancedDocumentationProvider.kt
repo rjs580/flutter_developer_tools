@@ -27,12 +27,6 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
         val dartDocProvider = com.jetbrains.lang.dart.ide.documentation.DartDocumentationProvider()
         val originalDoc = dartDocProvider.generateDoc(element, originalElement) ?: return null
 
-        println("=".repeat(80))
-        println("Original Documentation:")
-        println(originalDoc)
-        println("=".repeat(80))
-
-
         // Enhance code blocks with syntax highlighting
         return enhanceDocumentationWithSyntaxHighlighting(originalDoc, element)
     }
@@ -112,18 +106,37 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
      * These are typically method signatures or class declarations.
      */
     private fun processComplexCodeBlock(htmlContent: String, backgroundColor: String, contextElement: PsiElement): String {
+        // Remove trailing <br> tags before processing
+        val cleanedContent = htmlContent.replace(Regex("""(<br/?>\s*)+$"""), "")
+
         // Extract the raw text content, preserving line breaks
-        val textWithBreaks = htmlContent
-            .replace(Regex("<br/?>"), "\n\n")  // Convert <br> tags to double newlines for separation
-            .replace(Regex("<[^>]+>"), "")   // Remove all other HTML tags
+        val textWithBreaks = cleanedContent
+            .replace(Regex("""<br/?>\s*<br/?>"""), "\n\n")  // Convert double <br><br> to double newlines
+            .replace(Regex("""<br/?>"""), "\n")  // Convert single <br> tags to single newlines
+            .replace(Regex("""<[^>]+>"""), "")   // Remove all other HTML tags
 
         val decodedText = decodeHtmlEntities(textWithBreaks)
 
+        // Trim trailing whitespace and newlines
+        var trimmedText = decodedText.trimEnd()
+
+        // Add separation after Dart import/package lines
+        // If first line ends with .dart and there's not already double newline separation, add it
+        val lines = trimmedText.lines()
+        if (lines.size > 1 && lines[0].trim().endsWith(".dart")) {
+            // Check if there's already double newline after first line
+            val afterFirstLine = trimmedText.substringAfter(lines[0])
+            if (!afterFirstLine.startsWith("\n\n")) {
+                // Replace the first single newline with double newline
+                trimmedText = lines[0] + "\n\n" + lines.drop(1).joinToString("\n")
+            }
+        }
+
         // Highlight the entire code block
-        val highlighted = highlightCode(decodedText, "dart", contextElement)
+        val highlighted = highlightCode(trimmedText, "dart", contextElement)
 
         // Wrap in pre tag to preserve newlines and give proper code block styling
-        return """<pre style="margin: 8px 0; padding: 8px; background-color: $backgroundColor; font-family: monospace; white-space: pre-wrap;">$highlighted</pre>"""
+        return """<pre style="margin: 0; padding: 12px 8px; background-color: $backgroundColor; font-family: monospace; white-space: pre-wrap;">$highlighted</pre>"""
     }
 
     /**
