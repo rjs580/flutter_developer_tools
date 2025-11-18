@@ -98,14 +98,13 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         val repositoryUrl = pkgInfo.repositoryUrl
             ?: return buildBasicPackageDoc(pkgName, pkgInfo)
 
-        // Fetch README asynchronously
         val readmeFuture = CompletableFuture.supplyAsync {
-            RepositoryMarkdownFetcher.fetchReadme(repositoryUrl)
+            RepositoryMarkdownFetcher.fetchReadme(repositoryUrl, pkgName)
         }
 
         val readme = try {
-            readmeFuture.get(3, TimeUnit.SECONDS)
-        } catch (e: Exception) {
+            readmeFuture.get(30, TimeUnit.SECONDS)
+        } catch (_: Exception) {
             null
         }
 
@@ -143,14 +142,13 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         val repositoryUrl = pkgInfo.repositoryUrl
             ?: return buildBasicVersionDoc(pkgName, normalizedVersion)
 
-        // Fetch CHANGELOG asynchronously
         val changelogFuture = CompletableFuture.supplyAsync {
-            RepositoryMarkdownFetcher.fetchChangelog(repositoryUrl)
+            RepositoryMarkdownFetcher.fetchChangelog(repositoryUrl, pkgName)
         }
 
         val changelog = try {
-            changelogFuture.get(3, TimeUnit.SECONDS)
-        } catch (e: Exception) {
+            changelogFuture.get(30, TimeUnit.SECONDS)
+        } catch (_: Exception) {
             null
         }
 
@@ -172,7 +170,7 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
 
         return try {
             future.get(30, TimeUnit.SECONDS)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             cache.getInfo(pkgName)
         }
     }
@@ -310,7 +308,7 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
         return try {
             val parsedTree = MarkdownParser(markdownFlavour).buildMarkdownTreeFromString(markdown)
             HtmlGenerator(markdown, parsedTree, markdownFlavour).generateHtml()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "<pre>${escapeHtml(markdown)}</pre>"
         }
     }

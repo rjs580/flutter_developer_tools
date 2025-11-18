@@ -7,7 +7,8 @@ data class PubPackage(
     var isFlutterFavorite: Boolean? = null,
     var likes: Int? = null,
     var pubPoints: Int? = null,
-    var repositoryUrl: String? = null
+    var repositoryUrl: String? = null,
+    var homepageUrl: String? = null
 ) {
     companion object {
         fun withName(name: String) = PubPackage(
@@ -17,7 +18,8 @@ data class PubPackage(
             isFlutterFavorite = null,
             likes = null,
             pubPoints = null,
-            repositoryUrl = null
+            repositoryUrl = null,
+            homepageUrl = null
         )
     }
 }

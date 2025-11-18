@@ -70,8 +70,9 @@ object PubDevApi {
                     val latestDetails = jsonDetails["latest"].asJsonObject
                     val latestVersion = latestDetails["version"].asString
                     val pubspecObj = latestDetails["pubspec"].asJsonObject
-                    val description = pubspecObj["description"].asString
-                    val repositoryUrl = pubspecObj["repository"].asString
+                    val description = pubspecObj["description"]?.asString
+                    val repositoryUrl = pubspecObj["repository"]?.asString
+                    val homepageUrl = pubspecObj["homepage"]?.asString
 
                     val jsonScore = JsonParser.parseString(score).asJsonObject
                     val likes = jsonScore["likeCount"]?.asInt ?: 0
@@ -82,7 +83,18 @@ object PubDevApi {
 
                     // Invoke callback on EDT to prevent UI threading issues
                     ApplicationManager.getApplication().invokeLater {
-                        callback(PubPackage(name, latestVersion, description, isFlutterFavorite, likes, pubPoints, repositoryUrl))
+                        callback(
+                            PubPackage(
+                                name,
+                                latestVersion,
+                                description,
+                                isFlutterFavorite,
+                                likes,
+                                pubPoints,
+                                repositoryUrl,
+                                homepageUrl
+                            )
+                        )
                     }
                 }
             } catch (e: Exception) {
