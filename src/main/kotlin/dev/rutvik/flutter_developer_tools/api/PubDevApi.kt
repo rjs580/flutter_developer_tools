@@ -8,6 +8,14 @@ import dev.rutvik.flutter_developer_tools.models.PubPackage
 import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
 import kotlinx.coroutines.*
 
+
+/**
+ * API client for interacting with pub.dev package repository.
+ * Provides functionality to fetch package names and details from pub.dev,
+ * with caching support to minimize network requests.
+ * All network operations are performed asynchronously on background threads
+ * with callbacks executed on the EDT.
+ */
 object PubDevApi {
     private val log = Logger.getInstance(PubDevApi::class.java)
 
