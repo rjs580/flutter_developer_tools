@@ -149,6 +149,16 @@
         <codeInsight.daemonBoundCodeVisionProvider
                 implementation="dev.rutvik.flutter_developer_tools.dart.codeVision.DartInheritorsCodeVisionProvider"/>
 
+        <!-- Enhanced Dart Documentation with Syntax Highlighting -->
+        <lang.documentationProvider
+                language="Dart"
+                implementationClass="dev.rutvik.flutter_developer_tools.dart.documentation.DartEnhancedDocumentationProvider"
+                order="first"/>
+
+        <!-- Enhanced Dart Breadcrumbs -->
+        <breadcrumbsInfoProvider
+                implementation="dev.rutvik.flutter_developer_tools.dart.breadcrumbs.DartBreadcrumbsProvider"/>
+
         <!-- Cache invalidators -->
         <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>
     </extensions>
