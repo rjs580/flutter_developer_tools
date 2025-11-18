@@ -5,6 +5,7 @@ import com.intellij.codeInsight.hints.codeVision.ReferencesCodeVisionProvider
 import com.intellij.codeInsight.navigation.actions.GotoDeclarationAction
 import com.intellij.find.findUsages.FindUsagesOptions
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.search.GlobalSearchScope
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Provides code vision showing usage counts for Dart elements.
+ * Uses optimized search with progress checking and cancellation support.
  */
 class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
 
@@ -39,7 +41,10 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
                 name != null && name != "main"
             }
             is DartMethodDeclaration -> !element.isAbstract
-            is DartVarDeclarationList -> true
+            is DartVarDeclarationList -> {
+                // Skip private variables in code vision
+                element.varAccessDeclaration.componentName.text?.startsWith("_") != true
+            }
             else -> false
         }
     }
@@ -63,6 +68,9 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
         options.isSearchForTextOccurrences = false
 
         finder.processElementUsages(referencedElement, { usage ->
+            // Check for cancellation to avoid blocking the UI
+            ProgressManager.checkCanceled()
+
             usage.element?.let { usageElement ->
                 if (DartTestSourcesFilter.isTestSources(
                         usageElement.containingFile.virtualFile,
@@ -75,18 +83,25 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
             usages.incrementAndGet() <= MAX_USAGES
         }, options)
 
-        val sourceUsagesLabel = when (val count = usages.get()) {
-            0 -> return if (!el.isAbstract) "No usages" else null
+        val totalUsages = usages.get()
+        val totalTestUsages = testUsages.get()
+
+        // Don't show if no usages for non-abstract elements
+        if (totalUsages == 0 && !el.isAbstract) {
+            return "No usages"
+        }
+
+        val sourceUsagesLabel = when (totalUsages) {
+            0 -> return null
             1 -> "1 usage"
-            else -> "$count usages"
+            else -> if (totalUsages > MAX_USAGES) "$MAX_USAGES+ usages" else "$totalUsages usages"
         }
 
-        val testUsagesLabel = when (val count = testUsages.get()) {
-            0 -> return sourceUsagesLabel
-            else -> "$count in tests"
+        return if (totalTestUsages == 0) {
+            sourceUsagesLabel
+        } else {
+            "$sourceUsagesLabel ($totalTestUsages in tests)"
         }
-
-        return "$sourceUsagesLabel ($testUsagesLabel)"
     }
 
     override fun handleClick(editor: Editor, element: PsiElement, event: MouseEvent?) {

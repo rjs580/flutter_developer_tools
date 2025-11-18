@@ -1,10 +1,15 @@
+
 package dev.rutvik.flutter_developer_tools.dart.hints
 
 import com.intellij.codeInsight.hints.*
 import com.intellij.lang.Language
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.util.CachedValue
+import com.intellij.psi.util.CachedValueProvider
+import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.childrenOfType
 import com.intellij.ui.dsl.builder.panel
 import com.jetbrains.lang.dart.DartLanguage
@@ -18,11 +23,12 @@ import javax.swing.JPanel
 /**
  * Provides type hints for variables without explicit type declarations.
  * Shows inferred types for variables declared with 'var', 'final', or 'const'.
+ * Uses caching to minimize calls to Dart Analysis Server.
  */
 @Suppress("UnstableApiUsage")
 class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings> {
 
-    data class Settings(var showBeforeIdentifier: Boolean = false)
+    data class Settings(var showBeforeIdentifier: Boolean = true)
 
     override val key: SettingsKey<Settings> = settingsKey
     override val name: String = "Variable type hints"
@@ -33,6 +39,12 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
           var name = "Flutter";
           final count = 42;
           const isActive = true;
+          
+          // Before identifier mode (default):
+          // String name = "Flutter";
+          
+          // After identifier mode:
+          // name: String = "Flutter";
         }
     """.trimIndent()
 
@@ -54,6 +66,7 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
             override fun createComponent(listener: ChangeListener): JPanel = panel {
                 row {
                     checkBox("Show type before identifier")
+                        .comment("When enabled: <b>String</b> name = \"value\"<br/>When disabled: name<b>: String</b> = \"value\"")
                         .applyToComponent {
                             isSelected = initialShowBefore
                             addItemListener {
@@ -92,8 +105,8 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
                 if (identifiers.isEmpty()) return true
 
                 identifiers.forEach { identifier ->
-                    val type = getTypeFromAnalyzer(identifier)
-                    if (type != null && type != "dynamic") {
+                    val type = getCachedType(identifier)
+                    if (type != null && type != "dynamic" && !type.startsWith("_")) {
                         submitInlayHint(identifier, type, sink)
                     }
                 }
@@ -104,8 +117,8 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
                 if (element.childrenOfType<DartType>().isNotEmpty()) return true
 
                 val identifier = element.childrenOfType<DartComponentName>().firstOrNull() ?: return true
-                val type = getTypeFromAnalyzer(identifier)
-                if (type != null && type != "dynamic") {
+                val type = getCachedType(identifier)
+                if (type != null && type != "dynamic" && !type.startsWith("_")) {
                     submitInlayHint(identifier, type, sink)
                 }
             }
@@ -113,12 +126,35 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
             return true
         }
 
+        /**
+         * Gets type from cache or fetches from Dart Analysis Server if not cached.
+         * Cache is invalidated when the file is modified.
+         */
+        private fun getCachedType(identifier: DartComponentName): String? {
+            return CachedValuesManager.getCachedValue(identifier, TYPE_CACHE_KEY) {
+                val type = getTypeFromAnalyzer(identifier)
+                CachedValueProvider.Result.create(
+                    type,
+                    identifier.containingFile // Invalidate when file changes
+                )
+            }
+        }
+
         private fun getTypeFromAnalyzer(identifier: DartComponentName): String? {
             if (file.virtualFile == null) return null
 
             val das = DartAnalysisServerService.getInstance(file.project)
-            return das.analysis_getHover(file.virtualFile, identifier.textOffset)
-                .firstOrNull()?.staticType
+
+            // Early exit if analysis server is not ready
+            if (!das.isServerProcessActive) return null
+
+            return try {
+                das.analysis_getHover(file.virtualFile, identifier.textOffset)
+                    .firstOrNull()?.staticType
+            } catch (_: Exception) {
+                // If analysis server is unavailable or slow, don't block
+                null
+            }
         }
 
         private fun submitInlayHint(
@@ -130,11 +166,13 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
             val typeRepresentation = factory.smallText(type)
 
             val (offset, representation) = if (settings.showBeforeIdentifier) {
+                // Before: String name
                 identifierRange.startOffset to factory.seq(
                     factory.roundWithBackground(typeRepresentation),
                     factory.textSpacePlaceholder(1, true)
                 )
             } else {
+                // After: name: String
                 identifierRange.endOffset to factory.roundWithBackground(
                     factory.seq(factory.smallText(": "), typeRepresentation)
                 )
@@ -147,3 +185,4 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
 
 @Suppress("UnstableApiUsage")
 private val settingsKey = SettingsKey<DartTypeHintsProvider.Settings>("dart.type.hints")
+private val TYPE_CACHE_KEY = Key.create<CachedValue<String?>>("DART_TYPE_HINT_CACHE")
