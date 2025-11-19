@@ -1,14 +1,18 @@
+
 package dev.rutvik.flutter_developer_tools.dart.hints
 
 import com.intellij.codeInsight.hints.HintInfo
 import com.intellij.codeInsight.hints.InlayInfo
 import com.intellij.codeInsight.hints.InlayParameterHintsProvider
 import com.intellij.lang.Language
+import com.intellij.openapi.project.DumbService
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.childrenOfType
+import com.intellij.util.containers.ContainerUtil
 import com.jetbrains.lang.dart.DartLanguage
 import com.jetbrains.lang.dart.ide.info.DartFunctionDescription
 import com.jetbrains.lang.dart.psi.*
+import com.jetbrains.lang.dart.util.DartResolveUtil
 
 /**
  * Provides parameter name hints for non-named arguments in Dart method calls.
@@ -32,6 +36,11 @@ class DartParameterHintsProvider : InlayParameterHintsProvider {
     override fun getBlackListDependencyLanguage(): Language = DartLanguage.INSTANCE
 
     override fun getParameterHints(element: PsiElement): List<InlayInfo> {
+        // Skip during indexing to avoid expensive operations
+        if (DumbService.isDumb(element.project)) {
+            return emptyList()
+        }
+
         val arguments = when (element) {
             is DartCallExpression -> element.childrenOfType<DartArguments>().firstOrNull()
             is DartNewExpression -> element.arguments
@@ -56,6 +65,11 @@ class DartParameterHintsProvider : InlayParameterHintsProvider {
     }
 
     override fun getHintInfo(element: PsiElement): HintInfo? {
+        // Skip during indexing
+        if (DumbService.isDumb(element.project)) {
+            return null
+        }
+
         return getFunctionDescription(element)?.let { getMethodInfo(it) }
     }
 
@@ -65,26 +79,40 @@ class DartParameterHintsProvider : InlayParameterHintsProvider {
     }
 
     private fun getFunctionDescription(element: PsiElement): DartFunctionDescription? {
-        return when (element) {
-            is DartCallExpression -> DartFunctionDescription.tryGetDescription(element)
-            is DartNewExpression -> {
-                val type = element.type
-                val referenceExpressions = element.referenceExpressionList
-                val psiElement = if (referenceExpressions.isEmpty() && type != null) {
-                    type.referenceExpression
-                } else {
-                    referenceExpressions.lastOrNull()
-                }
-
-                val target = psiElement?.resolve()
-                if (target is DartComponentName) {
-                    val classResolveResult = type?.let {
-                        com.jetbrains.lang.dart.util.DartResolveUtil.resolveClassByType(it)
+        return try {
+            when (element) {
+                is DartCallExpression -> DartFunctionDescription.tryGetDescription(element)
+                is DartNewExpression -> {
+                    val type = element.type ?: return null
+                    val referenceExpressions = element.referenceExpressionList
+                    val psiElement = if (referenceExpressions.isEmpty()) {
+                        type.referenceExpression
+                    } else {
+                        referenceExpressions.lastOrNull()
                     }
-                    DartFunctionDescription.createDescription(target.parent as DartComponent, classResolveResult)
-                } else null
+
+                    val target = psiElement?.resolve()
+                    if (target is DartComponentName) {
+                        val classResolveResult = DartResolveUtil.resolveClassByType(type)
+
+                        if (classResolveResult != null) {
+                            DartFunctionDescription.createDescription(
+                                target.parent as DartComponent,
+                                classResolveResult
+                            )
+                        } else {
+                            // Fallback: try to create description without class context
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                }
+                else -> null
             }
-            else -> null
+        } catch (e: Exception) {
+            // Fail gracefully if anything goes wrong
+            null
         }
     }
 
