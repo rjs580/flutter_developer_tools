@@ -27,6 +27,8 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
         const val ID = "dart.inheritors"
     }
 
+    val implementationsKey = Key<Set<DartComponent>>("IMPLEMENTATIONS_KEY")
+
     override val id: String = ID
 
     override fun acceptsFile(file: PsiFile): Boolean = file is DartFile
@@ -73,7 +75,7 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
             )
         }
 
-        element.putUserData(IMPLEMENTATIONS, implementations)
+        element.putUserData(implementationsKey, implementations)
 
         val sourceCount = implementations.size
         if (sourceCount == 0) return null
@@ -98,7 +100,7 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
         if (event == null || element !is DartComponent) return
 
         val anchor = element.componentName ?: return
-        val components = element.getUserData(IMPLEMENTATIONS) ?: return
+        val components = element.getUserData(implementationsKey) ?: return
 
         val (popupTitle, findUsagesTitle) = if (element is DartClassDefinition) {
             DaemonBundle.message("navigation.title.subclass", anchor.name, components.size, "") to
@@ -124,5 +126,3 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
     override val relativeOrderings: List<CodeVisionRelativeOrdering>
         get() = listOf(CodeVisionRelativeOrdering.CodeVisionRelativeOrderingAfter(DartReferencesCodeVisionProvider.ID))
 }
-
-val IMPLEMENTATIONS = Key<Set<DartComponent>>("IMPLEMENTATIONS_KEY")
