@@ -36,70 +36,41 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
     override fun acceptsElement(element: PsiElement): Boolean {
         if (!element.manager.isInProject(element)) return false
 
-        return when (element) {
-            // Non-abstract classes (exclude local classes inside functions)
-            is DartClassDefinition -> {
-                !element.isAbstract && !isLocalElement(element)
+        return when {
+            // Class/enum members: methods, fields, getters, setters, constructors, etc.
+            // (Excludes abstract methods and main function)
+            (element is DartComponent || element is DartVarDeclarationList) &&
+                    (element.parent is DartClassMembers || element.parent is DartEnumDefinition) -> {
+                if (element is DartComponent) {
+                    val name = element.componentName?.text
+                    !element.isAbstract && name != null && name != "main"
+                } else {
+                    true // VarDeclarationList
+                }
             }
 
-            // Top-level functions (exclude main and local functions)
-            is DartFunctionDeclarationWithBody -> {
+            // Top-level class definitions (exclude abstract classes)
+            element is DartClassDefinition -> !element.isAbstract
+
+            // Top-level functions (exclude main and abstract/external)
+            element is DartFunctionDeclarationWithBodyOrNative -> {
                 val name = element.componentName.text
-                name != null && name != "main" && !isLocalElement(element)
+                name != null && name != "main"
             }
 
-            // Methods (including getters, setters, operators)
-            is DartMethodDeclaration -> !element.isAbstract
+            // Enum definitions
+            element is DartEnumDefinition -> true
 
-            // Getters
-            is DartGetterDeclaration -> true
+            // Top-level type aliases, mixins, extensions
+            element is DartFunctionTypeAlias -> true
+            element is DartMixinDeclaration -> true
+            element is DartExtensionDeclaration -> true
 
-            // Setters
-            is DartSetterDeclaration -> true
-
-            // Named constructors, factory constructors, const constructors
-            is DartNamedConstructorDeclaration -> true
-            is DartFactoryConstructorDeclaration -> true
-
-            // Regular variables, fields, const fields (exclude local variables)
-            is DartVarDeclarationList -> !isLocalElement(element)
-
-            // Enums (exclude local enums)
-            is DartEnumDefinition -> !isLocalElement(element)
-
-            // Enum constants
-            is DartEnumConstantDeclaration -> true
-
-            // Mixins
-            is DartMixinDeclaration -> true
-
-            // Extensions
-            is DartExtensionDeclaration -> true
-
-            // Type aliases
-            is DartFunctionTypeAlias -> true
+            // Top-level variables
+            element is DartVarDeclarationList && element.parent is DartFile -> true
 
             else -> false
         }
-    }
-
-    /**
-     * Checks if an element is local (defined inside a function body).
-     * Returns true for local classes, functions, and variables.
-     * Returns false for top-level and class member elements.
-     */
-    private fun isLocalElement(element: PsiElement): Boolean {
-        var parent = element.parent
-        while (parent != null) {
-            when (parent) {
-                // If we hit a function body before hitting file/class, it's local
-                is DartFunctionBody -> return true
-                // If we hit file or class members first, it's not local
-                is DartFile, is DartClassMembers -> return false
-            }
-            parent = parent.parent
-        }
-        return false
     }
 
     override fun getHint(element: PsiElement, file: PsiFile): String? {
