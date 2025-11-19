@@ -149,7 +149,7 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
             // Make it slightly different from the default background
             val adjustedColor = ColorUtil.darker(backgroundColor, 1)
             ColorUtil.toHtmlColor(adjustedColor)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "#f5f5f5" // Fallback light gray
         }
     }
@@ -176,7 +176,7 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
                 )
                 buffer.toString()
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Fallback: return escaped code without highlighting
             escapeHtml(code)
         }
