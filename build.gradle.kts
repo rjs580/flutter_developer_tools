@@ -52,7 +52,7 @@ intellijPlatform {
         <h4>Dart Code Enhancement</h4>
         <ul>
             <li><b>Syntax-Highlighted Documentation</b>: Code examples in hover docs respect your IDE color scheme</li>
-            <li><b>Enhanced Breadcrumbs</b>: Navigate through classes, methods, constructors, mixins, enums, extensions, getters, and setters</li>
+            <li><b>Enhanced Breadcrumbs</b>: Navigate through classes, methods, constructors, widgets, mixins, enums, extensions, getters, and setters</li>
             <li><b>Parameter Hints</b>: Show parameter names for non-named arguments</li>
             <li><b>Type Hints</b>: Display inferred types for variables and parameters</li>
             <li><b>Code Lens</b>: Usage counts and implementation counts for code elements</li>
