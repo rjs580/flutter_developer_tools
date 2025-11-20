@@ -245,12 +245,22 @@ class WidgetHeatmapWindow(private val project: Project) {
         // Use projectScope to limit to current project only
         val scope = GlobalSearchScope.projectScope(project)
 
+        // Get the project base path to ensure we only scan the actual project lib folder
+        val projectBasePath = project.basePath ?: return emptyList()
+
         com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
             .iterateContent { virtualFile ->
-                // Only include Dart files in the lib/ directory
+                // Only include Dart files in the project's lib/ directory
+                // Exclude symlinks, build folders, and plugin examples
                 if (virtualFile.extension == "dart" &&
                     scope.contains(virtualFile) &&
-                    virtualFile.path.contains("/lib/")) {
+                    virtualFile.path.startsWith(projectBasePath) &&
+                    virtualFile.path.contains("/lib/") &&
+                    !virtualFile.path.contains("/.symlinks/") &&
+                    !virtualFile.path.contains("/build/") &&
+                    !virtualFile.path.contains("/.dart_tool/") &&
+                    !virtualFile.path.contains("/.github/") &&
+                    !virtualFile.path.contains("/example/")) {
 
                     psiManager.findFile(virtualFile)?.let { psiFile ->
                         if (psiFile is DartFile) {

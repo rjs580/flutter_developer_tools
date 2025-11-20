@@ -23,6 +23,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.jetbrains.lang.dart.psi.*
 import java.awt.*
@@ -41,10 +42,11 @@ import kotlin.math.sin
 /**
  * Visual Call Graph Tool Window
  *
- * Analyzes the currently open Dart file and shows:
- * - Which functions in this file call other functions (across the entire project's lib/ folder)
- * - Which functions call functions in this file (callers)
- * - Complete call flow visualization
+ * Shows function call relationships including:
+ * - Direct calls: myFunction()
+ * - Lambda/closure calls: onPressed: () { myFunction(); }
+ * - Method calls: obj.method()
+ * - Calls across the entire project (lib/ folder)
  */
 class CallGraphWindow(private val project: Project) {
 
@@ -54,6 +56,10 @@ class CallGraphWindow(private val project: Project) {
     private var lastUpdateTime: Long = 0
     private var currentFile: DartFile? = null
     private var autoRefresh = true
+
+    // Debouncing for auto-refresh (wait 500ms after file switch)
+    private val refreshAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, project)
+    private val DEBOUNCE_DELAY_MS = 500
 
     data class CallNode(
         val name: String,
@@ -130,7 +136,11 @@ class CallGraphWindow(private val project: Project) {
                     if (autoRefresh) {
                         event.newFile?.let { file ->
                             if (file.extension == "dart" && file.path.contains("/lib/")) {
-                                loadCurrentFile()
+                                // Debounce: cancel previous request and schedule new one
+                                refreshAlarm.cancelAllRequests()
+                                refreshAlarm.addRequest({
+                                    loadCurrentFile()
+                                }, DEBOUNCE_DELAY_MS)
                             }
                         }
                     }
@@ -193,9 +203,12 @@ class CallGraphWindow(private val project: Project) {
     ) {
         indicator.text = "Step 1/3: Finding all project functions..."
 
+        // Get project base path
+        val projectBasePath = project.basePath ?: return
+
         // Step 1: Build index of ALL functions in lib/ folder
         val allProjectFunctions = mutableMapOf<String, PsiElement>()
-        findAllProjectFunctions(allProjectFunctions, indicator)
+        findAllProjectFunctions(allProjectFunctions, indicator, projectBasePath)
 
         if (indicator.isCanceled) return
 
@@ -223,13 +236,14 @@ class CallGraphWindow(private val project: Project) {
         indicator.text = "Step 3/3: Tracing call relationships..."
         indicator.fraction = 0.66
 
-        // Step 3: Find what each function calls and who calls it
+        // Step 3: Find what each function calls (including in lambdas/closures)
         nodes.values.forEach { node ->
             if (indicator.isCanceled) return@forEach
 
-            // Find what this function calls
-            val callExpressions = PsiTreeUtil.findChildrenOfType(node.element, DartCallExpression::class.java)
-            callExpressions.forEach { callExpr ->
+            // Find ALL call expressions including nested ones in lambdas
+            val allCallExpressions = findAllCallExpressions(node.element)
+
+            allCallExpressions.forEach { callExpr ->
                 val calledName = extractCalledFunctionName(callExpr)
                 if (calledName != null && allProjectFunctions.containsKey(calledName)) {
                     // Add called function to graph if not already there
@@ -260,9 +274,18 @@ class CallGraphWindow(private val project: Project) {
         calculateLevels(nodes)
     }
 
+    /**
+     * Finds ALL call expressions including those nested in lambdas/closures
+     * This is key to detecting: onPressed: () { testFunc(); }
+     */
+    private fun findAllCallExpressions(element: PsiElement): List<DartCallExpression> {
+        return PsiTreeUtil.collectElementsOfType(element, DartCallExpression::class.java).toList()
+    }
+
     private fun findAllProjectFunctions(
         functions: MutableMap<String, PsiElement>,
-        indicator: ProgressIndicator
+        indicator: ProgressIndicator,
+        projectBasePath: String
     ) {
         val psiManager = PsiManager.getInstance(project)
         val scope = GlobalSearchScope.projectScope(project)
@@ -274,7 +297,13 @@ class CallGraphWindow(private val project: Project) {
 
                 if (virtualFile.extension == "dart" &&
                     scope.contains(virtualFile) &&
-                    virtualFile.path.contains("/lib/")) {
+                    virtualFile.path.startsWith(projectBasePath) &&
+                    virtualFile.path.contains("/lib/") &&
+                    !virtualFile.path.contains("/.symlinks/") &&
+                    !virtualFile.path.contains("/build/") &&
+                    !virtualFile.path.contains("/.dart_tool/") &&
+                    !virtualFile.path.contains("/.github/") &&
+                    !virtualFile.path.contains("/example/")) {
 
                     psiManager.findFile(virtualFile)?.let { psiFile ->
                         if (psiFile is DartFile) {
@@ -372,8 +401,10 @@ class CallGraphWindow(private val project: Project) {
             if (indicator.isCanceled) return
             if (funcName.startsWith("$currentFileName::")) return@forEach // Skip current file
 
-            val callExpressions = PsiTreeUtil.findChildrenOfType(element, DartCallExpression::class.java)
-            callExpressions.forEach { callExpr ->
+            // Find ALL call expressions including in lambdas
+            val allCallExpressions = findAllCallExpressions(element)
+
+            allCallExpressions.forEach { callExpr ->
                 val calledName = extractCalledFunctionName(callExpr)
                 if (calledName != null && calledName in currentFileFunctions) {
                     // This external function calls something in our current file
@@ -430,7 +461,7 @@ class CallGraphWindow(private val project: Project) {
             }
         }
 
-        // Handle nodes that call into current file (negative levels)
+        // Handle nodes that call into current file (negative levels - callers from external files)
         val callers = nodes.values.filter { !it.isInCurrentFile && it.calls.any { called -> nodes[called]?.isInCurrentFile == true } }
         callers.forEach { it.level = -1 }
     }
@@ -508,13 +539,12 @@ class CallGraphWindow(private val project: Project) {
         }
     }
 
-    // Custom Panel for Drawing the Graph - IMPROVED VISUALS
+    // Custom Panel for Drawing the Graph
     inner class CallGraphPanel : JPanel() {
         private var nodes: Map<String, CallNode> = emptyMap()
         private var nodePositions: Map<String, Point> = emptyMap()
         private var scale = 1.0
 
-        // IMPROVED: Smaller, tighter spacing
         private val nodeWidth = 120
         private val nodeHeight = 28
         private val levelGap = 70
@@ -565,7 +595,7 @@ class CallGraphWindow(private val project: Project) {
             var maxHeight = 0
 
             levels.forEach { (level, nodesAtLevel) ->
-                val y = (level + 2) * levelGap + 50 // +2 to account for callers at level -1
+                val y = (level + 2) * levelGap + 50
                 val totalWidth = nodesAtLevel.size * (nodeWidth + nodeGap)
                 var x = max(50, (width - totalWidth) / 2)
 
@@ -636,7 +666,6 @@ class CallGraphWindow(private val project: Project) {
                     if (calledName in nodes) {
                         val toPos = nodePositions[calledName] ?: return@forEach
 
-                        // Color: darker for external calls, lighter for internal
                         g2.color = if (node.isInCurrentFile && nodes[calledName]?.isInCurrentFile == true) {
                             JBColor(Gray._120, Gray._140)
                         } else {
@@ -648,10 +677,9 @@ class CallGraphWindow(private val project: Project) {
                         val toX = toPos.x + nodeWidth / 2
                         val toY = toPos.y
 
-                        // Draw arrow
                         g2.drawLine(fromX, fromY, toX, toY)
 
-                        // Draw arrowhead
+                        // Arrowhead
                         val angle = atan2((toY - fromY).toDouble(), (toX - fromX).toDouble())
                         val arrowSize = 6
                         val x1 = toX - arrowSize * cos(angle - Math.PI / 6)
@@ -665,13 +693,11 @@ class CallGraphWindow(private val project: Project) {
                 }
             }
 
-            // Draw nodes - IMPROVED VISUALS
+            // Draw nodes
             nodes.forEach { (nodeName, node) ->
                 val pos = nodePositions[nodeName] ?: return@forEach
 
-                // Highlight current file nodes vs external nodes
                 g2.color = if (node.isInCurrentFile) {
-                    // Current file: blue tones
                     when (node.type) {
                         NodeType.FUNCTION -> JBColor(Color(100, 150, 255), Color(60, 90, 150))
                         NodeType.METHOD -> JBColor(Color(150, 180, 255), Color(90, 110, 150))
@@ -680,18 +706,15 @@ class CallGraphWindow(private val project: Project) {
                         NodeType.SETTER -> JBColor(Color(255, 180, 120), Color(150, 110, 70))
                     }
                 } else {
-                    // External: muted gray tones
                     JBColor(Gray._220, Gray._80)
                 }
 
                 g2.fillRoundRect(pos.x, pos.y, nodeWidth, nodeHeight, 8, 8)
 
-                // Border - thicker for current file
                 g2.color = if (node.isInCurrentFile) JBColor.BLACK else JBColor.GRAY
                 g2.stroke = BasicStroke(if (node.isInCurrentFile) 2f else 1f)
                 g2.drawRoundRect(pos.x, pos.y, nodeWidth, nodeHeight, 8, 8)
 
-                // Node text - IMPROVED: Remove file prefix for cleaner display
                 g2.color = if (node.isInCurrentFile) JBColor.BLACK else JBColor.DARK_GRAY
                 g2.font = g2.font.deriveFont(if (node.isInCurrentFile) Font.BOLD else Font.PLAIN, 10f)
 
