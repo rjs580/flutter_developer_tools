@@ -10,6 +10,9 @@ import com.intellij.ui.breadcrumbs.BreadcrumbsProvider
 import com.jetbrains.lang.dart.DartLanguage
 import com.jetbrains.lang.dart.DartTokenTypes
 import com.jetbrains.lang.dart.psi.*
+import dev.rutvik.flutter_developer_tools.settings.BreadcrumbsSettingsState
+import dev.rutvik.flutter_developer_tools.settings.AvailableIcons
+import dev.rutvik.flutter_developer_tools.settings.DefaultWidgetIconMappings
 import javax.swing.Icon
 
 /**
@@ -26,6 +29,9 @@ import javax.swing.Icon
  * - Widget instantiations (for Flutter widget tree navigation)
  */
 class DartBreadcrumbsProvider : BreadcrumbsProvider {
+    private val settings: BreadcrumbsSettingsState
+        get() = BreadcrumbsSettingsState.getInstance()
+
     override fun getLanguages(): Array<Language> = arrayOf(DartLanguage.INSTANCE)
 
     override fun acceptElement(e: PsiElement): Boolean = when (e) {
@@ -116,107 +122,66 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
                 }
             }
             is DartEnumConstantDeclaration -> com.intellij.icons.AllIcons.Nodes.Enum
-            // Widget instantiations - use specific icons based on widget type
             is DartCallExpression -> getWidgetIcon(element)
             else -> super.getElementIcon(element)
         }
     }
+
     private fun getWidgetIcon(callExpr: DartCallExpression): Icon {
-        val widgetName = getWidgetNameFromCall(callExpr) ?: return com.intellij.icons.AllIcons.Nodes.Tag
+        val widgetName = getWidgetNameFromCall(callExpr) ?: return AvailableIcons.getIconOrDefault("Nodes.Tag")
 
-        return when {
-            // Layout widgets - use diagram icons
-            widgetName in setOf("Column", "Row", "Stack", "Flex") ->
-                com.intellij.icons.AllIcons.Actions.SplitVertically
-
-            widgetName in setOf("Container", "SizedBox", "AspectRatio", "ConstrainedBox", "LimitedBox") ->
-                com.intellij.icons.AllIcons.Nodes.EmptyNode
-
-            widgetName in setOf("Padding", "Center", "Align", "FittedBox") ->
-                com.intellij.icons.AllIcons.Actions.MoveToLeftBottom
-
-            widgetName in setOf("Expanded", "Flexible", "Spacer") ->
-                com.intellij.icons.AllIcons.Actions.Expandall
-
-            widgetName in setOf("Wrap", "Flow") ->
-                com.intellij.icons.AllIcons.Actions.GroupBy
-
-            // Scrollable widgets
-            widgetName in setOf("ListView", "GridView", "CustomScrollView", "SingleChildScrollView", "PageView") ->
-                com.intellij.icons.AllIcons.Actions.PreviewDetails
-
-            // Interactive widgets
-            widgetName in setOf("GestureDetector", "InkWell", "Draggable", "DragTarget", "LongPressDraggable") ->
-                com.intellij.icons.AllIcons.Nodes.Editorconfig
-
-            // Text widgets
-            widgetName in setOf("Text", "RichText", "SelectableText") ->
-                com.intellij.icons.AllIcons.FileTypes.Text
-
-            // Input widgets
-            widgetName in setOf("TextField", "TextFormField", "EditableText") ->
-                com.intellij.icons.AllIcons.Actions.Edit
-
-            // Buttons
-            widgetName in setOf(
-                "ElevatedButton", "TextButton", "OutlinedButton", "FilledButton",
-                "IconButton", "FloatingActionButton", "MaterialButton"
-            ) ->
-                com.intellij.icons.AllIcons.Actions.Execute
-
-            // Icons and images
-            widgetName in setOf("Icon", "ImageIcon") ->
-                com.intellij.icons.AllIcons.Nodes.Artifact
-
-            widgetName in setOf("Image", "FadeInImage", "CircleAvatar") ->
-                com.intellij.icons.AllIcons.FileTypes.Image
-
-            // Scaffold and app structure
-            widgetName in setOf("Scaffold", "AppBar", "BottomNavigationBar", "Drawer", "TabBar") ->
-                com.intellij.icons.AllIcons.Nodes.Folder
-
-            widgetName in setOf("MaterialApp", "CupertinoApp", "WidgetsApp") ->
-                com.intellij.icons.AllIcons.Nodes.Module
-
-            // Card and surface
-            widgetName in setOf("Card", "Material", "Surface") ->
-                com.intellij.icons.AllIcons.Nodes.Static
-
-            // List items
-            widgetName in setOf("ListTile", "ExpansionTile", "CheckboxListTile", "RadioListTile") ->
-                com.intellij.icons.AllIcons.Actions.ListChanges
-
-            // Forms and checkboxes
-            widgetName in setOf("Form", "FormField") ->
-                com.intellij.icons.AllIcons.Actions.Properties
-
-            widgetName in setOf("Checkbox", "Radio", "Switch", "Slider", "DropdownButton") ->
-                com.intellij.icons.AllIcons.Actions.ToggleSoftWrap
-
-            // Navigation
-            widgetName in setOf("Navigator", "Route", "PageRoute") ->
-                com.intellij.icons.AllIcons.Actions.Forward
-
-            // Animations
-            widgetName in setOf("AnimatedContainer", "AnimatedOpacity", "Hero", "FadeTransition", "ScaleTransition") ->
-                com.intellij.icons.AllIcons.Actions.Refresh
-
-            // Providers and state management
-            widgetName in setOf("Provider", "Consumer", "Selector", "ChangeNotifierProvider", "StreamProvider") ->
-                com.intellij.icons.AllIcons.Nodes.DataSchema
-
-            // Builders
-            widgetName in setOf("Builder", "LayoutBuilder", "FutureBuilder", "StreamBuilder", "ValueListenableBuilder") ->
-                com.intellij.icons.AllIcons.Actions.Show
-
-            // Cupertino (iOS-style) widgets
-            widgetName.startsWith("Cupertino") ->
-                com.intellij.icons.AllIcons.Nodes.Artifact
-
-            // Custom or unknown widgets - generic tag icon
-            else ->
-                com.intellij.icons.AllIcons.Nodes.Tag
+        // Try to find icon mapping for the exact widget name first
+        val exactMapping = settings.widgetIconMappings[widgetName]
+        if (exactMapping != null) {
+            return AvailableIcons.getIconOrDefault(exactMapping)
         }
+
+        // If inference is enabled, try to match standard widget name
+        if (settings.inferStandardWidgetNames) {
+            val standardWidgetName = inferStandardWidgetName(widgetName)
+            if (standardWidgetName != widgetName) {
+                val inferredMapping = settings.widgetIconMappings[standardWidgetName]
+                if (inferredMapping != null) {
+                    return AvailableIcons.getIconOrDefault(inferredMapping)
+                }
+            }
+        }
+
+        // Fall back to default mappings
+        val defaultIconId = DefaultWidgetIconMappings.mappings[widgetName]
+        if (defaultIconId != null) {
+            return AvailableIcons.getIconOrDefault(defaultIconId)
+        }
+
+        // Try inference on defaults as last resort
+        if (settings.inferStandardWidgetNames) {
+            val standardWidgetName = inferStandardWidgetName(widgetName)
+            val inferredDefaultIconId = DefaultWidgetIconMappings.mappings[standardWidgetName]
+            if (inferredDefaultIconId != null) {
+                return AvailableIcons.getIconOrDefault(inferredDefaultIconId)
+            }
+        }
+
+        // Return generic widget icon
+        return AvailableIcons.getIconOrDefault("Nodes.Tag")
+    }
+
+    /**
+     * Infers standard Flutter widget name from custom widget names
+     */
+    private fun inferStandardWidgetName(widgetName: String): String {
+        val recognizedWidgets = BreadcrumbsSettingsState.DEFAULT_RECOGNIZED_WIDGETS +
+                settings.customRecognizedWidgets
+
+        // Check if the widget name ends with any recognized widget name (case insensitive)
+        for (standard in recognizedWidgets) {
+            if (widgetName.endsWith(standard, ignoreCase = true)) {
+                return standard
+            }
+        }
+
+        // Return original name if no match found
+        return widgetName
     }
 
     override fun getElementTooltip(element: PsiElement): String {

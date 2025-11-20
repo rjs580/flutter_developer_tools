@@ -156,6 +156,16 @@
 
         <!-- Cache invalidators -->
         <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>
+
+        <!-- Settings -->
+        <applicationService
+                serviceImplementation="dev.rutvik.flutter_developer_tools.settings.BreadcrumbsSettingsState"/>
+
+        <applicationConfigurable
+                parentId="tools"
+                instance="dev.rutvik.flutter_developer_tools.settings.BreadcrumbsConfigurable"
+                id="dev.rutvik.flutter_developer_tools.settings.BreadcrumbsConfigurable"
+                displayName="Flutter Developer Tools"/>
     </extensions>
 
     <applicationListeners>
