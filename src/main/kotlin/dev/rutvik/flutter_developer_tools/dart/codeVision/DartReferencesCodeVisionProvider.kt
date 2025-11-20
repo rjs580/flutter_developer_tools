@@ -7,6 +7,7 @@ import com.intellij.codeInsight.navigation.actions.GotoDeclarationAction
 import com.intellij.find.findUsages.FindUsagesOptions
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.project.DumbService
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.search.GlobalSearchScope
@@ -74,6 +75,10 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
     }
 
     override fun getHint(element: PsiElement, file: PsiFile): String? {
+        if (DumbService.isDumb(element.project)) {
+            return null
+        }
+
         // Ensure Dart analysis server is ready
         val das = DartAnalysisServerService.getInstance(element.project)
         if (!das.isServerProcessActive) {

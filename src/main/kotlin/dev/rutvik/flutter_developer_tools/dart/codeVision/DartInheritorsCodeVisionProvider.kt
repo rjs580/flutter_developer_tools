@@ -6,6 +6,7 @@ import com.intellij.codeInsight.daemon.impl.PsiElementListNavigator
 import com.intellij.codeInsight.hints.codeVision.InheritorsCodeVisionProvider
 import com.intellij.ide.util.DefaultPsiElementCellRenderer
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -42,6 +43,10 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
     }
 
     override fun getHint(element: PsiElement, file: PsiFile): String? {
+        if (DumbService.isDumb(element.project)) {
+            return null
+        }
+
         if (element !is DartComponent) return null
 
         // Ensure Dart analysis server is ready

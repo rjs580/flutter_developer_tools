@@ -4,6 +4,7 @@ package dev.rutvik.flutter_developer_tools.dart.hints
 import com.intellij.codeInsight.hints.*
 import com.intellij.lang.Language
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -96,6 +97,10 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
     ) : FactoryInlayHintsCollector(editor) {
 
         override fun collect(element: PsiElement, editor: Editor, sink: InlayHintsSink): Boolean {
+            if (DumbService.isDumb(element.project)) {
+                return true
+            }
+
             // Handle variable declarations
             if (element is DartVarAccessDeclaration) {
                 // If already has explicit type, skip
@@ -135,7 +140,8 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
                 val type = getTypeFromAnalyzer(identifier)
                 CachedValueProvider.Result.create(
                     type,
-                    identifier.containingFile // Invalidate when file changes
+                    identifier.containingFile, // Invalidate when file changes
+                    identifier,
                 )
             }
         }
