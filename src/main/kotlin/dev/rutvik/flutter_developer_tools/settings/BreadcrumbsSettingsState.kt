@@ -6,18 +6,33 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.util.xmlb.XmlSerializerUtil
 
+/**
+ * Persistent settings state for Flutter Developer Tools breadcrumbs functionality.
+ * Handles storage and retrieval of user preferences related to widget breadcrumbs display.
+ *
+ * Settings are stored in FlutterDeveloperToolsSettings.xml file.
+ */
 @State(
     name = "dev.rutvik.flutter_developer_tools.settings.BreadcrumbsSettingsState",
     storages = [Storage("FlutterDeveloperToolsSettings.xml")]
 )
 class BreadcrumbsSettingsState : PersistentStateComponent<BreadcrumbsSettingsState> {
 
+    /**
+     * Custom widget names will also be mapped to their standard counterparts (e.g. MyScaffold -> Scaffold).
+     */
     var inferStandardWidgetNames: Boolean = true
 
-    // Map of widget name to icon identifier (e.g., "Column" -> "Actions.SplitVertically")
+    /**
+     * Maps widget names to their corresponding icon identifiers in the IDE.
+     * Example: "Column" -> "Actions.SplitVertically"
+     */
     var widgetIconMappings: MutableMap<String, String> = mutableMapOf()
 
-    // Custom widget names that user wants to recognize (in addition to defaults)
+    /**
+     * Set of custom widget names that should be recognized by the plugin.
+     * These are in addition to the default recognized widgets.
+     */
     var customRecognizedWidgets: MutableSet<String> = mutableSetOf()
 
     override fun getState(): BreadcrumbsSettingsState = this

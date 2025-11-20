@@ -15,6 +15,17 @@ import javax.swing.*
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 
+/**
+ * Configurable implementation for Flutter Developer Tools breadcrumbs settings.
+ *
+ * This class provides a configuration interface for:
+ * - Widget name inference settings
+ * - Custom widget icon mappings
+ * - Adding/removing custom widgets
+ * - Resetting icon mappings to defaults
+ *
+ * The settings are persisted using [BreadcrumbsSettingsState].
+ */
 class BreadcrumbsConfigurable : Configurable {
 
     private val settings = BreadcrumbsSettingsState.getInstance()
