@@ -1,3 +1,4 @@
+
 package dev.rutvik.flutter_developer_tools.toolWindow
 
 import com.intellij.find.findUsages.FindUsagesOptions
@@ -43,6 +44,7 @@ class WidgetHeatmapWindow(private val project: Project) {
     private val table: JBTable
     private val tableModel: WidgetHeatmapTableModel
     private val statusLabel: JBLabel
+    private val emptyStateLabel: JBLabel
     private var lastUpdateTime: Long = 0
 
     data class WidgetUsageInfo(
@@ -83,6 +85,13 @@ class WidgetHeatmapWindow(private val project: Project) {
             })
         }
 
+        // Empty state label shown in center when no data
+        emptyStateLabel = JBLabel("Click refresh to analyze widgets", SwingConstants.CENTER).apply {
+            font = font.deriveFont(Font.BOLD, 16f)
+            foreground = JBColor.GRAY
+            isVisible = true
+        }
+
         statusLabel = JBLabel("Ready. Click refresh to analyze widgets.").apply {
             border = JBUI.Borders.empty(5, 10)
             foreground = JBColor.GRAY
@@ -110,8 +119,37 @@ class WidgetHeatmapWindow(private val project: Project) {
     private fun setupContent() {
         val scrollPane = JBScrollPane(table)
 
+        // Use LayeredPane to show empty state label centered over table
+        val layeredPane = JLayeredPane().apply {
+            layout = object : LayoutManager {
+                override fun addLayoutComponent(name: String?, comp: Component?) {}
+                override fun removeLayoutComponent(comp: Component?) {}
+                override fun preferredLayoutSize(parent: Container?): Dimension = Dimension(400, 300)
+                override fun minimumLayoutSize(parent: Container?): Dimension = Dimension(200, 150)
+
+                override fun layoutContainer(parent: Container?) {
+                    parent ?: return
+                    val bounds = parent.bounds
+                    scrollPane.setBounds(0, 0, bounds.width, bounds.height)
+
+                    // Center the empty state label
+                    val labelWidth = 300
+                    val labelHeight = 30
+                    emptyStateLabel.setBounds(
+                        (bounds.width - labelWidth) / 2,
+                        (bounds.height - labelHeight) / 2,
+                        labelWidth,
+                        labelHeight
+                    )
+                }
+            }
+
+            add(scrollPane, JLayeredPane.DEFAULT_LAYER)
+            add(emptyStateLabel, JLayeredPane.PALETTE_LAYER)
+        }
+
         val mainPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
-            add(scrollPane, BorderLayout.CENTER)
+            add(layeredPane, BorderLayout.CENTER)
             add(statusLabel, BorderLayout.SOUTH)
         }
 
@@ -122,11 +160,12 @@ class WidgetHeatmapWindow(private val project: Project) {
 
     private fun refreshData() {
         statusLabel.text = "Analyzing widgets..."
+        emptyStateLabel.isVisible = false
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(
             project,
             "Analyzing widget usage",
-            true
+            true  // Cancelable
         ) {
             override fun run(indicator: ProgressIndicator) {
                 indicator.text = "Scanning Dart files..."
@@ -179,8 +218,21 @@ class WidgetHeatmapWindow(private val project: Project) {
                 lastUpdateTime = System.currentTimeMillis()
 
                 ApplicationManager.getApplication().invokeLater {
-                    tableModel.setData(widgetUsages.values.toList())
-                    updateStatusLabel(widgetUsages.size)
+                    if (indicator.isCanceled) {
+                        statusLabel.text = "Analysis canceled"
+                        emptyStateLabel.isVisible = tableModel.getRowCount() == 0
+                    } else {
+                        tableModel.setData(widgetUsages.values.toList())
+                        updateStatusLabel(widgetUsages.size)
+                        emptyStateLabel.isVisible = widgetUsages.isEmpty()
+                    }
+                }
+            }
+
+            override fun onCancel() {
+                ApplicationManager.getApplication().invokeLater {
+                    statusLabel.text = "Analysis canceled by user"
+                    emptyStateLabel.isVisible = tableModel.getRowCount() == 0
                 }
             }
         })
@@ -189,11 +241,17 @@ class WidgetHeatmapWindow(private val project: Project) {
     private fun findAllDartFiles(): List<DartFile> {
         val dartFiles = mutableListOf<DartFile>()
         val psiManager = PsiManager.getInstance(project)
+
+        // Use projectScope to limit to current project only
         val scope = GlobalSearchScope.projectScope(project)
 
         com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
             .iterateContent { virtualFile ->
-                if (virtualFile.extension == "dart" && scope.contains(virtualFile)) {
+                // Only include Dart files in the lib/ directory
+                if (virtualFile.extension == "dart" &&
+                    scope.contains(virtualFile) &&
+                    virtualFile.path.contains("/lib/")) {
+
                     psiManager.findFile(virtualFile)?.let { psiFile ->
                         if (psiFile is DartFile) {
                             dartFiles.add(psiFile)
@@ -214,6 +272,7 @@ class WidgetHeatmapWindow(private val project: Project) {
 
         try {
             val handler = DartServerFindUsagesHandler(dartClass)
+            // Use projectScope to limit search to current project only
             val options = FindUsagesOptions(GlobalSearchScope.projectScope(project))
             options.isUsages = true
 
@@ -237,6 +296,7 @@ class WidgetHeatmapWindow(private val project: Project) {
 
         try {
             val handler = DartServerFindUsagesHandler(dartClass)
+            // Use projectScope to limit search to current project only
             val options = FindUsagesOptions(GlobalSearchScope.projectScope(project))
             options.isUsages = true
 
@@ -289,6 +349,7 @@ class WidgetHeatmapWindow(private val project: Project) {
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             enabled = state
             tableModel.setFilterCustomOnly(state)
+            emptyStateLabel.isVisible = tableModel.getRowCount() == 0
         }
 
         override fun getActionUpdateThread(): ActionUpdateThread {
@@ -304,6 +365,7 @@ class WidgetHeatmapWindow(private val project: Project) {
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             enabled = state
             tableModel.setFilterHighUsage(state)
+            emptyStateLabel.isVisible = tableModel.getRowCount() == 0
         }
 
         override fun getActionUpdateThread(): ActionUpdateThread {
