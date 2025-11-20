@@ -110,7 +110,7 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
                 if (identifiers.isEmpty()) return true
 
                 identifiers.forEach { identifier ->
-                    val type = getCachedType(identifier)
+                    val type = getCachedType(element, identifier)
                     if (type != null && type != "dynamic" && !type.startsWith("_")) {
                         submitInlayHint(identifier, type, sink)
                     }
@@ -122,7 +122,7 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
                 if (element.childrenOfType<DartType>().isNotEmpty()) return true
 
                 val identifier = element.childrenOfType<DartComponentName>().firstOrNull() ?: return true
-                val type = getCachedType(identifier)
+                val type = getCachedType(element, identifier)
                 if (type != null && type != "dynamic" && !type.startsWith("_")) {
                     submitInlayHint(identifier, type, sink)
                 }
@@ -135,13 +135,14 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
          * Gets type from cache or fetches from Dart Analysis Server if not cached.
          * Cache is invalidated when the file is modified.
          */
-        private fun getCachedType(identifier: DartComponentName): String? {
+        private fun getCachedType(element: PsiElement, identifier: DartComponentName): String? {
             return CachedValuesManager.getCachedValue(identifier, TYPE_CACHE_KEY) {
                 val type = getTypeFromAnalyzer(identifier)
                 CachedValueProvider.Result.create(
                     type,
                     identifier.containingFile, // Invalidate when file changes
                     identifier,
+                    com.intellij.psi.util.PsiModificationTracker.getInstance(element.project)
                 )
             }
         }
