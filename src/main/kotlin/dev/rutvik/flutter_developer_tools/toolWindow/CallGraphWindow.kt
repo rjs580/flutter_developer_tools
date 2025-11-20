@@ -5,18 +5,20 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.editor.event.CaretEvent
+import com.intellij.openapi.editor.event.CaretListener
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
+import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.pom.Navigatable
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.ui.Gray
 import com.intellij.ui.JBColor
@@ -32,8 +34,7 @@ import java.awt.event.MouseEvent
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import javax.swing.JComponent
-import javax.swing.JPanel
+import javax.swing.*
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -42,11 +43,7 @@ import kotlin.math.sin
 /**
  * Visual Call Graph Tool Window
  *
- * Shows function call relationships including:
- * - Direct calls: myFunction()
- * - Lambda/closure calls: onPressed: () { myFunction(); }
- * - Method calls: obj.method()
- * - Calls across the entire project (lib/ folder)
+ * Shows a recursive call chain for the function at cursor position.
  */
 class CallGraphWindow(private val project: Project) {
 
@@ -54,592 +51,430 @@ class CallGraphWindow(private val project: Project) {
     private val graphPanel: CallGraphPanel
     private val statusLabel: JBLabel
     private var lastUpdateTime: Long = 0
-    private var currentFile: DartFile? = null
-    private var autoRefresh = true
+    private var maxDepth = 3
 
-    // Debouncing for auto-refresh (wait 500ms after file switch)
+    @Suppress("UnstableApiUsage")
     private val refreshAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, project)
-    private val DEBOUNCE_DELAY_MS = 500
+    private val refreshDebounceTime = 300
+
+    data class CallGraphData(
+        val centerNode: CallNode,
+        val callerChains: List<CallChain>,
+        val calleeChains: List<CallChain>
+    )
+
+    data class CallChain(
+        val nodes: List<CallNode>,
+        val isExternal: Boolean = false
+    )
 
     data class CallNode(
         val name: String,
-        val element: PsiElement,
+        val element: PsiElement?,
         val type: NodeType,
-        val fileName: String,
-        val isInCurrentFile: Boolean,
-        val calledBy: MutableSet<String> = mutableSetOf(),
-        val calls: MutableSet<String> = mutableSetOf(),
-        var level: Int = 0
+        val isExternal: Boolean = false
     )
 
     enum class NodeType {
-        FUNCTION,
-        METHOD,
-        CONSTRUCTOR,
-        GETTER,
-        SETTER
+        FUNCTION, METHOD, CONSTRUCTOR, GETTER, SETTER, EXTERNAL
     }
 
     init {
         graphPanel = CallGraphPanel()
-
-        statusLabel = JBLabel("Open a Dart file in lib/ to see the call graph").apply {
+        statusLabel = JBLabel("Place cursor on a function/method to see its call graph").apply {
             border = JBUI.Borders.empty(5, 10)
             foreground = JBColor.GRAY
         }
 
         setupToolbar()
         setupContent()
-        subscribeToFileChanges()
-
-        // Initial load if a Dart file is already open
-        FileEditorManager.getInstance(project).selectedEditor?.file?.let { file ->
-            if (file.extension == "dart" && file.path.contains("/lib/")) {
-                loadCurrentFile()
-            }
-        }
+        subscribeToEditorChanges()
     }
 
     private fun setupToolbar() {
+        val depthLabel = JLabel("Chain Depth: ")
+        val depthSpinner = JSpinner(SpinnerNumberModel(3, 1, 10, 1)).apply {
+            maximumSize = Dimension(60, 25)
+            preferredSize = Dimension(60, 25)
+            addChangeListener {
+                maxDepth = (value as Int)
+                analyzeCurrentPosition()
+            }
+        }
+
         val actionGroup = DefaultActionGroup().apply {
             add(RefreshAction())
-            add(ZoomInAction())
-            add(ZoomOutAction())
-            add(ResetZoomAction())
-            addSeparator()
-            add(ToggleAutoRefreshAction())
             add(ExportAction())
         }
 
         val toolbar = ActionManager.getInstance()
             .createActionToolbar("CallGraphToolbar", actionGroup, true)
         toolbar.targetComponent = panel
-        panel.toolbar = toolbar.component
+
+        val toolbarPanel = JPanel(BorderLayout()).apply {
+            add(toolbar.component, BorderLayout.WEST)
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)).apply {
+                add(depthLabel)
+                add(depthSpinner)
+            }, BorderLayout.CENTER)
+        }
+
+        panel.toolbar = toolbarPanel
     }
 
     private fun setupContent() {
         val scrollPane = JBScrollPane(graphPanel)
-
         val mainPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             add(scrollPane, BorderLayout.CENTER)
             add(statusLabel, BorderLayout.SOUTH)
         }
-
         panel.setContent(mainPanel)
     }
 
-    private fun subscribeToFileChanges() {
-        project.messageBus.connect().subscribe(
-            FileEditorManagerListener.FILE_EDITOR_MANAGER,
-            object : FileEditorManagerListener {
-                override fun selectionChanged(event: FileEditorManagerEvent) {
-                    if (autoRefresh) {
-                        event.newFile?.let { file ->
-                            if (file.extension == "dart" && file.path.contains("/lib/")) {
-                                // Debounce: cancel previous request and schedule new one
-                                refreshAlarm.cancelAllRequests()
-                                refreshAlarm.addRequest({
-                                    loadCurrentFile()
-                                }, DEBOUNCE_DELAY_MS)
-                            }
+    private fun subscribeToEditorChanges() {
+        val connection = project.messageBus.connect()
+        connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
+            override fun selectionChanged(event: FileEditorManagerEvent) {
+                val editor = event.newEditor
+                if (editor is TextEditor) {
+                    editor.editor.caretModel.addCaretListener(object : CaretListener {
+                        override fun caretPositionChanged(event: CaretEvent) {
+                            scheduleRefresh()
                         }
-                    }
-                }
-            }
-        )
-    }
-
-    fun getContent(): JComponent = panel
-
-    private fun loadCurrentFile() {
-        val editor = FileEditorManager.getInstance(project).selectedEditor ?: return
-        val file = editor.file ?: return
-
-        if (file.extension != "dart" || !file.path.contains("/lib/")) return
-
-        statusLabel.text = "Analyzing ${file.name}..."
-
-        ProgressManager.getInstance().run(object : Task.Backgroundable(
-            project,
-            "Building call graph",
-            true
-        ) {
-            override fun run(indicator: ProgressIndicator) {
-                indicator.text = "Analyzing function calls..."
-                indicator.isIndeterminate = false
-
-                val nodes = mutableMapOf<String, CallNode>()
-
-                ReadAction.run<Exception> {
-                    val psiFile = PsiManager.getInstance(project).findFile(file)
-                    if (psiFile is DartFile) {
-                        currentFile = psiFile
-                        analyzeDartFileWithProjectContext(psiFile, nodes, indicator)
-                    }
-                }
-
-                lastUpdateTime = System.currentTimeMillis()
-
-                ApplicationManager.getApplication().invokeLater {
-                    if (!indicator.isCanceled) {
-                        graphPanel.setNodes(nodes)
-                        updateStatusLabel(file.name, nodes.size)
-                    }
-                }
-            }
-
-            override fun onCancel() {
-                ApplicationManager.getApplication().invokeLater {
-                    statusLabel.text = "Analysis canceled"
+                    })
+                    scheduleRefresh()
                 }
             }
         })
     }
 
-    private fun analyzeDartFileWithProjectContext(
-        currentFile: DartFile,
-        nodes: MutableMap<String, CallNode>,
-        indicator: ProgressIndicator
-    ) {
-        indicator.text = "Step 1/3: Finding all project functions..."
+    private fun scheduleRefresh() {
+        refreshAlarm.cancelAllRequests()
+        refreshAlarm.addRequest({ analyzeCurrentPosition() }, refreshDebounceTime)
+    }
 
-        // Get project base path
-        val projectBasePath = project.basePath ?: return
+    fun getContent(): JComponent = panel
 
-        // Step 1: Build index of ALL functions in lib/ folder
-        val allProjectFunctions = mutableMapOf<String, PsiElement>()
-        findAllProjectFunctions(allProjectFunctions, indicator, projectBasePath)
+    private fun analyzeCurrentPosition() {
+        ReadAction.nonBlocking<CallGraphData?> {
+            val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@nonBlocking null
+            val file = editor.document.let { PsiDocumentManager.getInstance(project).getPsiFile(it) } as? DartFile
+                ?: return@nonBlocking null
 
-        if (indicator.isCanceled) return
+            if (!file.virtualFile.path.contains("/lib/")) return@nonBlocking null
 
-        indicator.text = "Step 2/3: Analyzing current file..."
-        indicator.fraction = 0.33
+            val offset = editor.caretModel.offset
+            val element = file.findElementAt(offset) ?: return@nonBlocking null
+            val function = findEnclosingFunction(element) ?: return@nonBlocking null
 
-        // Step 2: Analyze functions in current file
-        val currentFileElements = mutableMapOf<String, PsiElement>()
-        extractFunctionsFromFile(currentFile, currentFileElements, currentFile.name)
-
-        currentFileElements.forEach { (name, element) ->
-            if (indicator.isCanceled) return
-
-            nodes[name] = CallNode(
-                name = name,
-                element = element,
-                type = getNodeType(element),
-                fileName = currentFile.name,
-                isInCurrentFile = true
-            )
+            buildCallGraph(function)
         }
-
-        if (indicator.isCanceled) return
-
-        indicator.text = "Step 3/3: Tracing call relationships..."
-        indicator.fraction = 0.66
-
-        // Step 3: Find what each function calls (including in lambdas/closures)
-        nodes.values.forEach { node ->
-            if (indicator.isCanceled) return@forEach
-
-            // Find ALL call expressions including nested ones in lambdas
-            val allCallExpressions = findAllCallExpressions(node.element)
-
-            allCallExpressions.forEach { callExpr ->
-                val calledName = extractCalledFunctionName(callExpr)
-                if (calledName != null && allProjectFunctions.containsKey(calledName)) {
-                    // Add called function to graph if not already there
-                    if (calledName !in nodes) {
-                        val calledElement = allProjectFunctions[calledName]!!
-                        val calledFile = calledElement.containingFile
-                        nodes[calledName] = CallNode(
-                            name = calledName,
-                            element = calledElement,
-                            type = getNodeType(calledElement),
-                            fileName = calledFile.name,
-                            isInCurrentFile = false
-                        )
-                    }
-
-                    node.calls.add(calledName)
-                    nodes[calledName]?.calledBy?.add(node.name)
+            .coalesceBy(this)
+            .inSmartMode(project)
+            .finishOnUiThread(com.intellij.openapi.application.ModalityState.defaultModalityState()) { graphData ->
+                if (graphData != null) {
+                    graphPanel.setData(graphData)
+                    lastUpdateTime = System.currentTimeMillis()
+                    updateStatusLabel(graphData.centerNode.name)
+                } else {
+                    graphPanel.setData(null)
+                    statusLabel.text = "Place cursor on a function/method"
                 }
             }
-        }
-
-        // Also find who calls functions in the current file (from elsewhere in project)
-        findCallersOfCurrentFile(currentFile, allProjectFunctions, nodes, indicator)
-
-        indicator.fraction = 1.0
-
-        // Calculate levels for visual hierarchy
-        calculateLevels(nodes)
+            .submit { runnable -> ApplicationManager.getApplication().executeOnPooledThread(runnable) }
     }
 
-    /**
-     * Finds ALL call expressions including those nested in lambdas/closures
-     * This is key to detecting: onPressed: () { testFunc(); }
-     */
-    private fun findAllCallExpressions(element: PsiElement): List<DartCallExpression> {
-        return PsiTreeUtil.collectElementsOfType(element, DartCallExpression::class.java).toList()
+    private fun findEnclosingFunction(element: PsiElement): PsiElement? {
+        return PsiTreeUtil.getParentOfType(
+            element,
+            DartFunctionDeclarationWithBody::class.java,
+            DartMethodDeclaration::class.java,
+            DartGetterDeclaration::class.java,
+            DartSetterDeclaration::class.java,
+            DartFactoryConstructorDeclaration::class.java,
+            DartNamedConstructorDeclaration::class.java
+        )
     }
 
-    private fun findAllProjectFunctions(
-        functions: MutableMap<String, PsiElement>,
-        indicator: ProgressIndicator,
-        projectBasePath: String
-    ) {
-        val psiManager = PsiManager.getInstance(project)
-        val scope = GlobalSearchScope.projectScope(project)
+    private fun buildCallGraph(function: PsiElement): CallGraphData {
+        val centerNode = createNode(function)
+        val callerChains = buildCallerChains(function, maxDepth)
+        val calleeChains = buildCalleeChains(function, maxDepth)
+        return CallGraphData(centerNode, callerChains, calleeChains)
+    }
 
-        val dartFiles = mutableListOf<DartFile>()
-        com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
-            .iterateContent { virtualFile ->
-                if (indicator.isCanceled) return@iterateContent false
+    private fun buildCallerChains(element: PsiElement, maxDepth: Int): List<CallChain> {
+        val allChains = mutableListOf<CallChain>()
+        val globalVisited = mutableSetOf<PsiElement>()
 
-                if (virtualFile.extension == "dart" &&
-                    scope.contains(virtualFile) &&
-                    virtualFile.path.startsWith(projectBasePath) &&
-                    virtualFile.path.contains("/lib/") &&
-                    !virtualFile.path.contains("/.symlinks/") &&
-                    !virtualFile.path.contains("/build/") &&
-                    !virtualFile.path.contains("/.dart_tool/") &&
-                    !virtualFile.path.contains("/.github/") &&
-                    !virtualFile.path.contains("/example/")) {
+        fun exploreCallers(current: PsiElement, currentChain: List<CallNode>, depth: Int) {
+            if (depth >= maxDepth) {
+                if (currentChain.isNotEmpty()) {
+                    allChains.add(CallChain(currentChain.reversed(), false))
+                }
+                return
+            }
 
-                    psiManager.findFile(virtualFile)?.let { psiFile ->
-                        if (psiFile is DartFile) {
-                            dartFiles.add(psiFile)
-                        }
+            if (current in globalVisited) return
+            globalVisited.add(current)
+
+            // Search for all references to this function
+            val references = ReferencesSearch.search(
+                current,
+                GlobalSearchScope.projectScope(project)
+            ).findAll()
+
+            if (references.isEmpty()) {
+                // Dead end - add chain if we have one
+                if (currentChain.isNotEmpty()) {
+                    allChains.add(CallChain(currentChain.reversed(), false))
+                }
+                return
+            }
+
+            var foundCaller = false
+            for (ref in references) {
+                val refElement = ref.element
+                val enclosingFunc = findEnclosingFunction(refElement)
+
+                if (enclosingFunc != null && enclosingFunc != current) {
+                    foundCaller = true
+                    val node = createNode(enclosingFunc)
+                    val isInLib = enclosingFunc.containingFile?.virtualFile?.path?.contains("/lib/") == true
+
+                    if (isInLib) {
+                        // Continue exploring this chain
+                        exploreCallers(enclosingFunc, currentChain + node, depth + 1)
+                    } else {
+                        // External caller - terminate this chain
+                        allChains.add(CallChain((currentChain + node).reversed(), true))
                     }
                 }
-                true
             }
 
-        dartFiles.forEach { dartFile ->
-            if (indicator.isCanceled) return
-            extractFunctionsFromFile(dartFile, functions, dartFile.name)
+            // If we found callers but didn't reach max depth, add current chain
+            if (!foundCaller && currentChain.isNotEmpty()) {
+                allChains.add(CallChain(currentChain.reversed(), false))
+            }
         }
+
+        exploreCallers(element, emptyList(), 0)
+        return allChains.distinctBy { chain -> chain.nodes.joinToString("->") { it.name } }
+            .take(20)
     }
 
-    private fun extractFunctionsFromFile(
-        dartFile: DartFile,
-        functions: MutableMap<String, PsiElement>,
-        fileName: String
-    ) {
-        // Top-level functions
-        PsiTreeUtil.findChildrenOfType(dartFile, DartFunctionDeclarationWithBody::class.java).forEach { func ->
-            func.name?.let { name ->
-                functions["$fileName::$name"] = func
-            }
-        }
+    private fun buildCalleeChains(element: PsiElement, maxDepth: Int): List<CallChain> {
+        val allChains = mutableListOf<CallChain>()
+        val globalVisited = mutableSetOf<PsiElement>()
 
-        // Methods in classes
-        PsiTreeUtil.findChildrenOfType(dartFile, DartClass::class.java).forEach { dartClass ->
-            val className = dartClass.name ?: return@forEach
-
-            PsiTreeUtil.findChildrenOfType(dartClass, DartMethodDeclaration::class.java).forEach { method ->
-                method.name?.let { methodName ->
-                    functions["$fileName::$className.$methodName"] = method
+        fun exploreCallees(current: PsiElement, currentChain: List<CallNode>, depth: Int) {
+            if (depth >= maxDepth) {
+                if (currentChain.isNotEmpty()) {
+                    allChains.add(CallChain(currentChain, false))
                 }
+                return
             }
 
-            // Getters and setters
-            PsiTreeUtil.findChildrenOfType(dartClass, DartGetterDeclaration::class.java).forEach { getter ->
-                getter.name?.let { name ->
-                    functions["$fileName::$className.$name"] = getter
+            if (current in globalVisited) return
+            globalVisited.add(current)
+
+            // Find all function calls within this function
+            val calls = PsiTreeUtil.collectElementsOfType(current, DartCallExpression::class.java)
+
+            if (calls.isEmpty()) {
+                // Dead end - add chain if we have one
+                if (currentChain.isNotEmpty()) {
+                    allChains.add(CallChain(currentChain, false))
                 }
+                return
             }
 
-            PsiTreeUtil.findChildrenOfType(dartClass, DartSetterDeclaration::class.java).forEach { setter ->
-                setter.name?.let { name ->
-                    functions["$fileName::$className.$name"] = setter
-                }
-            }
+            var foundCallee = false
+            for (call in calls) {
+                val resolved = call.expression?.reference?.resolve()
 
-            // Constructors
-            PsiTreeUtil.findChildrenOfType(dartClass, DartFactoryConstructorDeclaration::class.java).forEach { constructor ->
-                constructor.name?.let { name ->
-                    functions["$fileName::$className.$name"] = constructor
-                }
-            }
-        }
-    }
+                if (resolved != null && resolved != current) {
+                    foundCallee = true
+                    val node = createNode(resolved)
+                    val isInLib = resolved.containingFile?.virtualFile?.path?.contains("/lib/") == true
 
-    private fun extractCalledFunctionName(callExpr: DartCallExpression): String? {
-        val expression = callExpr.expression ?: return null
-
-        // Try to resolve to actual declaration
-        val reference = expression.reference?.resolve()
-        if (reference != null) {
-            val fileName = reference.containingFile.name
-            val name = when (reference) {
-                is DartComponent -> reference.name
-                else -> null
-            } ?: return null
-
-            // Build qualified name
-            val className = (reference.parent?.parent as? DartClass)?.name
-            return if (className != null) {
-                "$fileName::$className.$name"
-            } else {
-                "$fileName::$name"
-            }
-        }
-
-        return null
-    }
-
-    private fun findCallersOfCurrentFile(
-        currentFile: DartFile,
-        allFunctions: Map<String, PsiElement>,
-        nodes: MutableMap<String, CallNode>,
-        indicator: ProgressIndicator
-    ) {
-        val currentFileName = currentFile.name
-        val currentFileFunctions = nodes.keys.filter { it.startsWith("$currentFileName::") }
-
-        allFunctions.forEach { (funcName, element) ->
-            if (indicator.isCanceled) return
-            if (funcName.startsWith("$currentFileName::")) return@forEach // Skip current file
-
-            // Find ALL call expressions including in lambdas
-            val allCallExpressions = findAllCallExpressions(element)
-
-            allCallExpressions.forEach { callExpr ->
-                val calledName = extractCalledFunctionName(callExpr)
-                if (calledName != null && calledName in currentFileFunctions) {
-                    // This external function calls something in our current file
-                    if (funcName !in nodes) {
-                        nodes[funcName] = CallNode(
-                            name = funcName,
-                            element = element,
-                            type = getNodeType(element),
-                            fileName = element.containingFile.name,
-                            isInCurrentFile = false
-                        )
+                    if (isInLib) {
+                        // Continue exploring this chain
+                        exploreCallees(resolved, currentChain + node, depth + 1)
+                    } else {
+                        // External call - terminate this chain
+                        allChains.add(CallChain(currentChain + node, true))
                     }
-
-                    nodes[funcName]?.calls?.add(calledName)
-                    nodes[calledName]?.calledBy?.add(funcName)
                 }
             }
+
+            // If we found callees but didn't go deeper, add current chain
+            if (!foundCallee && currentChain.isNotEmpty()) {
+                allChains.add(CallChain(currentChain, false))
+            }
         }
+
+        exploreCallees(element, emptyList(), 0)
+        return allChains.distinctBy { chain -> chain.nodes.joinToString("->") { it.name } }
+            .take(20)
     }
 
-    private fun getNodeType(element: PsiElement): NodeType {
+    private fun createNode(element: PsiElement): CallNode {
+        val isInLib = element.containingFile?.virtualFile?.path?.contains("/lib/") == true
+
         return when (element) {
-            is DartMethodDeclaration -> NodeType.METHOD
-            is DartFunctionDeclarationWithBody -> NodeType.FUNCTION
-            is DartGetterDeclaration -> NodeType.GETTER
-            is DartSetterDeclaration -> NodeType.SETTER
-            is DartFactoryConstructorDeclaration -> NodeType.CONSTRUCTOR
-            else -> NodeType.FUNCTION
-        }
-    }
-
-    private fun calculateLevels(nodes: MutableMap<String, CallNode>) {
-        // Find root nodes (functions in current file that aren't called by anything)
-        val currentFileNodes = nodes.values.filter { it.isInCurrentFile }
-        val rootNodes = currentFileNodes.filter { it.calledBy.isEmpty() }
-
-        val visited = mutableSetOf<String>()
-        val queue = ArrayDeque<Pair<String, Int>>()
-
-        rootNodes.forEach { queue.add(Pair(it.name, 0)) }
-
-        while (queue.isNotEmpty()) {
-            val (nodeName, level) = queue.removeFirst()
-            if (nodeName in visited) continue
-
-            visited.add(nodeName)
-            nodes[nodeName]?.let { node ->
-                node.level = level
-                node.calls.forEach { calledName ->
-                    if (calledName !in visited) {
-                        queue.add(Pair(calledName, level + 1))
+            is DartFunctionDeclarationWithBody -> {
+                val name = element.name ?: "anonymous"
+                CallNode(name, element, NodeType.FUNCTION, !isInLib)
+            }
+            is DartMethodDeclaration -> {
+                val className = PsiTreeUtil.getParentOfType(element, DartClass::class.java)?.name ?: "?"
+                val methodName = element.name ?: "anonymous"
+                CallNode("$className.$methodName", element, NodeType.METHOD, !isInLib)
+            }
+            is DartGetterDeclaration -> {
+                val className = PsiTreeUtil.getParentOfType(element, DartClass::class.java)?.name ?: "?"
+                val getterName = element.name ?: "getter"
+                CallNode("$className.$getterName", element, NodeType.GETTER, !isInLib)
+            }
+            is DartSetterDeclaration -> {
+                val className = PsiTreeUtil.getParentOfType(element, DartClass::class.java)?.name ?: "?"
+                val setterName = element.name ?: "setter"
+                CallNode("$className.$setterName", element, NodeType.SETTER, !isInLib)
+            }
+            is DartFactoryConstructorDeclaration -> {
+                val className = PsiTreeUtil.getParentOfType(element, DartClass::class.java)?.name ?: "?"
+                val constructorName = element.name ?: className
+                CallNode("$className.$constructorName", element, NodeType.CONSTRUCTOR, !isInLib)
+            }
+            is DartNamedConstructorDeclaration -> {
+                val className = PsiTreeUtil.getParentOfType(element, DartClass::class.java)?.name ?: "?"
+                val constructorName = element.name ?: "new"
+                CallNode("$className.$constructorName", element, NodeType.CONSTRUCTOR, !isInLib)
+            }
+            is DartComponentName -> {
+                // Handle component names (function/method names)
+                val parent = element.parent
+                val name = element.name ?: "unknown"
+                when (parent) {
+                    is DartFunctionDeclarationWithBody -> CallNode(name, parent, NodeType.FUNCTION, !isInLib)
+                    is DartMethodDeclaration -> {
+                        val className = PsiTreeUtil.getParentOfType(parent, DartClass::class.java)?.name ?: "?"
+                        CallNode("$className.$name", parent, NodeType.METHOD, !isInLib)
                     }
+                    else -> CallNode(name, element, NodeType.EXTERNAL, !isInLib)
                 }
             }
+            is PsiNamedElement -> {
+                // Fallback for any named element
+                val name = element.name ?: "unknown"
+                CallNode(name, element, NodeType.EXTERNAL, !isInLib)
+            }
+            else -> {
+                CallNode("unknown[${element.javaClass.simpleName}]", element, NodeType.EXTERNAL, !isInLib)
+            }
         }
-
-        // Handle nodes that call into current file (negative levels - callers from external files)
-        val callers = nodes.values.filter { !it.isInCurrentFile && it.calls.any { called -> nodes[called]?.isInCurrentFile == true } }
-        callers.forEach { it.level = -1 }
     }
 
-    private fun updateStatusLabel(fileName: String, nodeCount: Int) {
+    private fun updateStatusLabel(functionName: String) {
         val timeStr = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault())
             .format(Instant.ofEpochMilli(lastUpdateTime))
-
-        statusLabel.text = "$fileName • $nodeCount nodes • Last updated: $timeStr"
+        statusLabel.text = "Call graph for: $functionName • Depth: $maxDepth • Updated: $timeStr"
     }
 
-    // Actions
     inner class RefreshAction : AnAction("Refresh", "Refresh call graph", AllIcons.Actions.Refresh) {
         override fun actionPerformed(e: AnActionEvent) {
-            loadCurrentFile()
+            analyzeCurrentPosition()
         }
     }
 
-    inner class ZoomInAction : AnAction("Zoom In", "Zoom in", AllIcons.General.ZoomIn) {
+    inner class ExportAction : AnAction("Export", "Export to PNG", AllIcons.Actions.Download) {
         override fun actionPerformed(e: AnActionEvent) {
-            graphPanel.zoomIn()
-        }
-    }
+            val chooser = com.intellij.openapi.fileChooser.FileChooserFactory.getInstance()
+                .createSaveFileDialog(
+                    com.intellij.openapi.fileChooser.FileSaverDescriptor(
+                        "Export Call Graph", "Export call graph to PNG", "png"
+                    ), project
+                )
 
-    inner class ZoomOutAction : AnAction("Zoom Out", "Zoom out", AllIcons.General.ZoomOut) {
-        override fun actionPerformed(e: AnActionEvent) {
-            graphPanel.zoomOut()
-        }
-    }
-
-    inner class ResetZoomAction : AnAction("Reset Zoom", "Reset zoom to 100%", AllIcons.General.ActualZoom) {
-        override fun actionPerformed(e: AnActionEvent) {
-            graphPanel.resetZoom()
-        }
-    }
-
-    inner class ToggleAutoRefreshAction : ToggleAction("Auto-Refresh", "Automatically refresh when file changes", AllIcons.Actions.ForceRefresh) {
-        override fun isSelected(e: AnActionEvent): Boolean = autoRefresh
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            autoRefresh = state
-        }
-
-        override fun getActionUpdateThread(): ActionUpdateThread {
-            return ActionUpdateThread.EDT
-        }
-    }
-
-    inner class ExportAction : AnAction("Export", "Export graph to PNG", AllIcons.Actions.Download) {
-        override fun actionPerformed(e: AnActionEvent) {
-            exportToPng()
-        }
-    }
-
-    private fun exportToPng() {
-        val chooser = com.intellij.openapi.fileChooser.FileChooserFactory.getInstance()
-            .createSaveFileDialog(
-                com.intellij.openapi.fileChooser.FileSaverDescriptor(
-                    "Export Call Graph",
-                    "Export call graph to PNG",
-                    "png"
-                ),
-                project
-            )
-
-        val result = chooser.save(null as com.intellij.openapi.vfs.VirtualFile?, "call_graph.png")
-        result?.let { wrapper ->
-            try {
-                graphPanel.exportToPng(wrapper.file.toPath())
-                statusLabel.text = "Exported to ${wrapper.file.path}"
-            } catch (e: Exception) {
-                statusLabel.text = "Export failed: ${e.message}"
+            chooser.save(null as com.intellij.openapi.vfs.VirtualFile?, "call_graph.png")?.let { wrapper ->
+                try {
+                    graphPanel.exportToPng(wrapper.file.toPath())
+                    statusLabel.text = "Exported to ${wrapper.file.path}"
+                } catch (e: Exception) {
+                    statusLabel.text = "Export failed: ${e.message}"
+                }
             }
         }
     }
 
-    // Custom Panel for Drawing the Graph
     inner class CallGraphPanel : JPanel() {
-        private var nodes: Map<String, CallNode> = emptyMap()
-        private var nodePositions: Map<String, Point> = emptyMap()
-        private var scale = 1.0
-
-        private val nodeWidth = 120
-        private val nodeHeight = 28
-        private val levelGap = 70
-        private val nodeGap = 30
+        private var data: CallGraphData? = null
+        private val nodeHeight = 35
+        private val nodeSpacing = 10
+        private val columnWidth = 200
+        private val horizontalSpacing = 60
 
         init {
-            background = JBColor.WHITE
+            background = JBColor.background()
             isOpaque = true
 
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) {
-                    val scaledPoint = Point(
-                        (e.x / scale).toInt(),
-                        (e.y / scale).toInt()
-                    )
-
-                    val entry: Map.Entry<String, Point>? = nodePositions.entries.find { (_, pos) ->
-                        scaledPoint.x in pos.x..(pos.x + nodeWidth) &&
-                                scaledPoint.y in pos.y..(pos.y + nodeHeight)
-                    }
-
-                    entry?.let { (nodeName, _) ->
-                        nodes[nodeName]?.element?.let { element ->
-                            (element as? Navigatable)?.navigate(true)
+                    data?.let { graphData ->
+                        findNodeAt(e.point, graphData)?.let { node ->
+                            (node.element as? Navigatable)?.navigate(true)
                         }
                     }
                 }
             })
         }
 
-        fun setNodes(newNodes: Map<String, CallNode>) {
-            nodes = newNodes
-            calculateLayout()
+        fun setData(newData: CallGraphData?) {
+            data = newData
             revalidate()
             repaint()
         }
 
-        private fun calculateLayout() {
-            if (nodes.isEmpty()) {
-                nodePositions = emptyMap()
-                return
-            }
+        private fun findNodeAt(point: Point, graphData: CallGraphData): CallNode? {
+            val centerX = width / 2
+            var startY = 50
 
-            val positions = mutableMapOf<String, Point>()
-            val levels = nodes.values.groupBy { it.level }.toSortedMap()
-
-            var maxWidth = 0
-            var maxHeight = 0
-
-            levels.forEach { (level, nodesAtLevel) ->
-                val y = (level + 2) * levelGap + 50
-                val totalWidth = nodesAtLevel.size * (nodeWidth + nodeGap)
-                var x = max(50, (width - totalWidth) / 2)
-
-                nodesAtLevel.forEach { node ->
-                    positions[node.name] = Point(x, y)
-                    x += nodeWidth + nodeGap
-
-                    maxWidth = max(maxWidth, x + nodeWidth + 50)
-                    maxHeight = max(maxHeight, y + nodeHeight + 50)
+            // Check caller chains
+            graphData.callerChains.forEach { chain ->
+                var x = centerX - (chain.nodes.size * (columnWidth + horizontalSpacing))
+                chain.nodes.forEach { node ->
+                    if (point.x in x..(x + columnWidth) && point.y in startY..(startY + nodeHeight)) {
+                        return node
+                    }
+                    x += columnWidth + horizontalSpacing
                 }
+                startY += nodeHeight + nodeSpacing
             }
 
-            nodePositions = positions
-            preferredSize = Dimension(
-                (maxWidth * scale).toInt(),
-                (maxHeight * scale).toInt()
-            )
-        }
+            // Check center node
+            startY += 30
+            val centerNodeX = centerX - columnWidth / 2
+            if (point.x in centerNodeX..(centerNodeX + columnWidth) &&
+                point.y in startY..(startY + nodeHeight + 10)) {
+                return graphData.centerNode
+            }
 
-        fun zoomIn() {
-            scale = (scale * 1.2).coerceAtMost(3.0)
-            preferredSize = Dimension(
-                (preferredSize.width * 1.2).toInt(),
-                (preferredSize.height * 1.2).toInt()
-            )
-            revalidate()
-            repaint()
-        }
+            // Check callee chains
+            startY += nodeHeight + 50
+            graphData.calleeChains.forEach { chain ->
+                var x = centerX + horizontalSpacing
+                chain.nodes.forEach { node ->
+                    if (point.x in x..(x + columnWidth) && point.y in startY..(startY + nodeHeight)) {
+                        return node
+                    }
+                    x += columnWidth + horizontalSpacing
+                }
+                startY += nodeHeight + nodeSpacing
+            }
 
-        fun zoomOut() {
-            scale = (scale / 1.2).coerceAtLeast(0.3)
-            preferredSize = Dimension(
-                (preferredSize.width / 1.2).toInt(),
-                (preferredSize.height / 1.2).toInt()
-            )
-            revalidate()
-            repaint()
-        }
-
-        fun resetZoom() {
-            scale = 1.0
-            calculateLayout()
-            revalidate()
-            repaint()
+            return null
         }
 
         override fun paintComponent(g: Graphics) {
@@ -647,94 +482,179 @@ class CallGraphWindow(private val project: Project) {
             val g2 = g as Graphics2D
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-            g2.scale(scale, scale)
 
-            if (nodes.isEmpty()) {
+            val graphData = data
+            if (graphData == null) {
                 g2.color = JBColor.GRAY
                 g2.font = g2.font.deriveFont(14f)
-                g2.drawString("No call graph to display. Open a Dart file in lib/", 20, 30)
+                val msg = "Place cursor on a function to see its call graph"
+                val metrics = g2.fontMetrics
+                g2.drawString(msg, (width - metrics.stringWidth(msg)) / 2, height / 2)
                 return
             }
 
-            // Draw connections first
-            g2.stroke = BasicStroke(1.5f)
+            val centerX = width / 2
+            var currentY = 50
 
-            nodes.forEach { (nodeName, node) ->
-                val fromPos = nodePositions[nodeName] ?: return@forEach
+            // Draw caller chains
+            if (graphData.callerChains.isNotEmpty()) {
+                g2.font = g2.font.deriveFont(Font.BOLD, 11f)
+                g2.color = JBColor.GRAY
+                g2.drawString("← Called by (incoming calls)", 20, currentY - 20)
 
-                node.calls.forEach { calledName ->
-                    if (calledName in nodes) {
-                        val toPos = nodePositions[calledName] ?: return@forEach
-
-                        g2.color = if (node.isInCurrentFile && nodes[calledName]?.isInCurrentFile == true) {
-                            JBColor(Gray._120, Gray._140)
-                        } else {
-                            JBColor(Gray._180, Gray._100)
-                        }
-
-                        val fromX = fromPos.x + nodeWidth / 2
-                        val fromY = fromPos.y + nodeHeight
-                        val toX = toPos.x + nodeWidth / 2
-                        val toY = toPos.y
-
-                        g2.drawLine(fromX, fromY, toX, toY)
-
-                        // Arrowhead
-                        val angle = atan2((toY - fromY).toDouble(), (toX - fromX).toDouble())
-                        val arrowSize = 6
-                        val x1 = toX - arrowSize * cos(angle - Math.PI / 6)
-                        val y1 = toY - arrowSize * sin(angle - Math.PI / 6)
-                        val x2 = toX - arrowSize * cos(angle + Math.PI / 6)
-                        val y2 = toY - arrowSize * sin(angle + Math.PI / 6)
-
-                        g2.drawLine(toX, toY, x1.toInt(), y1.toInt())
-                        g2.drawLine(toX, toY, x2.toInt(), y2.toInt())
-                    }
-                }
+                val callerEndY = drawChains(g2, graphData.callerChains, centerX, currentY, true)
+                currentY = callerEndY + 30
             }
 
-            // Draw nodes
-            nodes.forEach { (nodeName, node) ->
-                val pos = nodePositions[nodeName] ?: return@forEach
+            // Draw center node
+            val centerNodeX = centerX - columnWidth / 2
+            drawCenterNode(g2, graphData.centerNode, centerNodeX, currentY)
+            currentY += nodeHeight + 50
 
-                g2.color = if (node.isInCurrentFile) {
-                    when (node.type) {
-                        NodeType.FUNCTION -> JBColor(Color(100, 150, 255), Color(60, 90, 150))
-                        NodeType.METHOD -> JBColor(Color(150, 180, 255), Color(90, 110, 150))
-                        NodeType.CONSTRUCTOR -> JBColor(Color(120, 220, 180), Color(70, 130, 110))
-                        NodeType.GETTER -> JBColor(Color(255, 220, 120), Color(150, 130, 70))
-                        NodeType.SETTER -> JBColor(Color(255, 180, 120), Color(150, 110, 70))
-                    }
+            // Draw callee chains
+            if (graphData.calleeChains.isNotEmpty()) {
+                g2.font = g2.font.deriveFont(Font.BOLD, 11f)
+                g2.color = JBColor.GRAY
+                g2.drawString("Calls → (outgoing calls)", 20, currentY - 20)
+
+                drawChains(g2, graphData.calleeChains, centerX, currentY, false)
+            }
+        }
+
+        private fun drawChains(
+            g2: Graphics2D,
+            chains: List<CallChain>,
+            centerX: Int,
+            startY: Int,
+            isCallers: Boolean
+        ): Int {
+            var currentY = startY
+
+            chains.forEach { chain ->
+                var x = if (isCallers) {
+                    centerX - (chain.nodes.size * (columnWidth + horizontalSpacing))
                 } else {
-                    JBColor(Gray._220, Gray._80)
+                    centerX + horizontalSpacing
                 }
 
-                g2.fillRoundRect(pos.x, pos.y, nodeWidth, nodeHeight, 8, 8)
+                var prevX = if (isCallers) centerX else centerX - horizontalSpacing
+                var prevY = startY - 30
 
-                g2.color = if (node.isInCurrentFile) JBColor.BLACK else JBColor.GRAY
-                g2.stroke = BasicStroke(if (node.isInCurrentFile) 2f else 1f)
-                g2.drawRoundRect(pos.x, pos.y, nodeWidth, nodeHeight, 8, 8)
+                chain.nodes.forEachIndexed { index, node ->
+                    drawNode(g2, node, x, currentY)
 
-                g2.color = if (node.isInCurrentFile) JBColor.BLACK else JBColor.DARK_GRAY
-                g2.font = g2.font.deriveFont(if (node.isInCurrentFile) Font.BOLD else Font.PLAIN, 10f)
+                    // Draw arrow
+                    if (index == 0 && !isCallers) {
+                        drawArrow(g2, prevX, prevY, x, currentY + nodeHeight / 2, chain.isExternal)
+                    } else if (index > 0) {
+                        drawArrow(g2, prevX + columnWidth, prevY + nodeHeight / 2, x, currentY + nodeHeight / 2, chain.isExternal)
+                    }
 
-                val displayName = node.name.substringAfter("::")
-                val text = if (displayName.length > 16) displayName.substring(0, 13) + "..." else displayName
+                    prevX = x
+                    prevY = currentY
+                    x += if (isCallers) columnWidth + horizontalSpacing else columnWidth + horizontalSpacing
+                }
 
-                val fm = g2.fontMetrics
-                val textWidth = fm.stringWidth(text)
-                val textX = pos.x + (nodeWidth - textWidth) / 2
-                val textY = pos.y + (nodeHeight + fm.ascent) / 2 - 1
+                // Connect last caller to center
+                if (isCallers && chain.nodes.isNotEmpty()) {
+                    drawArrow(g2, prevX + columnWidth, prevY + nodeHeight / 2, centerX - columnWidth / 2, startY + nodeHeight * chains.size + 30, chain.isExternal)
+                }
 
-                g2.drawString(text, textX, textY)
+                currentY += nodeHeight + nodeSpacing
             }
+
+            return currentY
+        }
+
+        private fun drawNode(g2: Graphics2D, node: CallNode, x: Int, y: Int) {
+            g2.color = if (node.isExternal) {
+                JBColor(Gray._240, Gray._60)
+            } else {
+                JBColor(Color(230, 245, 255), Color(45, 55, 70))
+            }
+            g2.fillRoundRect(x, y, columnWidth, nodeHeight, 8, 8)
+
+            g2.color = if (node.isExternal) {
+                JBColor(Gray._180, Gray._100)
+            } else {
+                JBColor(Color(100, 150, 255), Color(80, 120, 200))
+            }
+            g2.stroke = BasicStroke(1.5f)
+            g2.drawRoundRect(x, y, columnWidth, nodeHeight, 8, 8)
+
+            g2.color = if (node.isExternal) {
+                JBColor(Gray._100, Gray._160)
+            } else {
+                JBColor(Gray._20, Gray._220)
+            }
+            g2.font = g2.font.deriveFont(Font.PLAIN, 10f)
+
+            val text = if (node.name.length > 25) node.name.take(22) + "..." else node.name
+            val metrics = g2.fontMetrics
+            g2.drawString(text, x + 8, y + (nodeHeight + metrics.ascent) / 2 - 2)
+
+            if (node.isExternal) {
+                g2.font = g2.font.deriveFont(Font.ITALIC, 8f)
+                g2.drawString("[external]", x + 8, y + nodeHeight - 5)
+            }
+        }
+
+        private fun drawCenterNode(g2: Graphics2D, node: CallNode, x: Int, y: Int) {
+            g2.color = JBColor(Color(255, 245, 220), Color(80, 75, 60))
+            g2.fillRoundRect(x, y, columnWidth, nodeHeight + 10, 10, 10)
+
+            g2.color = JBColor(Color(200, 140, 0), Color(180, 140, 60))
+            g2.stroke = BasicStroke(2.5f)
+            g2.drawRoundRect(x, y, columnWidth, nodeHeight + 10, 10, 10)
+
+            g2.color = JBColor(Gray._20, Gray._240)
+            g2.font = g2.font.deriveFont(Font.BOLD, 11f)
+
+            val text = if (node.name.length > 25) node.name.take(22) + "..." else node.name
+            val metrics = g2.fontMetrics
+            g2.drawString(text, x + 10, y + (nodeHeight + 10 + metrics.ascent) / 2 - 2)
+        }
+
+        private fun drawArrow(g2: Graphics2D, x1: Int, y1: Int, x2: Int, y2: Int, isExternal: Boolean) {
+            g2.color = if (isExternal) {
+                JBColor(Gray._200, Gray._100)
+            } else {
+                JBColor(Gray._120, Gray._140)
+            }
+            g2.stroke = if (isExternal) {
+                BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL, 0f, floatArrayOf(5f), 0f)
+            } else {
+                BasicStroke(1.5f)
+            }
+
+            g2.drawLine(x1, y1, x2, y2)
+
+            val angle = atan2((y2 - y1).toDouble(), (x2 - x1).toDouble())
+            val arrowSize = 6
+            val x1Arrow = (x2 - arrowSize * cos(angle - Math.PI / 6)).toInt()
+            val y1Arrow = (y2 - arrowSize * sin(angle - Math.PI / 6)).toInt()
+            val x2Arrow = (x2 - arrowSize * cos(angle + Math.PI / 6)).toInt()
+            val y2Arrow = (y2 - arrowSize * sin(angle + Math.PI / 6)).toInt()
+
+            g2.stroke = BasicStroke(1.5f)
+            g2.drawLine(x2, y2, x1Arrow, y1Arrow)
+            g2.drawLine(x2, y2, x2Arrow, y2Arrow)
+        }
+
+        override fun getPreferredSize(): Dimension {
+            val graphData = data ?: return Dimension(800, 600)
+            val maxChainLength = max(
+                graphData.callerChains.maxOfOrNull { it.nodes.size } ?: 0,
+                graphData.calleeChains.maxOfOrNull { it.nodes.size } ?: 0
+            )
+            val width = max(800, maxChainLength * (columnWidth + horizontalSpacing) + 200)
+            val height = max(600, (graphData.callerChains.size + graphData.calleeChains.size) * (nodeHeight + nodeSpacing) + 300)
+            return Dimension(width, height)
         }
 
         fun exportToPng(path: java.nio.file.Path) {
             val bufferedImage = com.intellij.util.ui.ImageUtil.createImage(
-                graphPanel.graphics,
-                preferredSize.width,
-                preferredSize.height,
+                graphics, preferredSize.width, preferredSize.height,
                 java.awt.image.BufferedImage.TYPE_INT_RGB
             )
 

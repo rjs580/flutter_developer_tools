@@ -1,7 +1,6 @@
 
 package dev.rutvik.flutter_developer_tools.toolWindow
 
-import com.intellij.find.findUsages.FindUsagesOptions
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
@@ -21,9 +20,9 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
-import com.jetbrains.lang.dart.ide.findUsages.DartServerFindUsagesHandler
 import com.jetbrains.lang.dart.psi.DartClass
 import com.jetbrains.lang.dart.psi.DartFile
+import com.jetbrains.lang.dart.psi.DartReferenceExpression
 import java.awt.*
 import java.time.Instant
 import java.time.ZoneId
@@ -31,6 +30,7 @@ import java.time.format.DateTimeFormatter
 import javax.swing.*
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
+import javax.swing.table.TableRowSorter
 
 /**
  * Widget Usage Heatmap Tool Window
@@ -43,6 +43,7 @@ class WidgetHeatmapWindow(private val project: Project) {
     private val panel = SimpleToolWindowPanel(true, true)
     private val table: JBTable
     private val tableModel: WidgetHeatmapTableModel
+    private val tableSorter: TableRowSorter<WidgetHeatmapTableModel>
     private val statusLabel: JBLabel
     private val emptyStateLabel: JBLabel
     private var lastUpdateTime: Long = 0
@@ -51,16 +52,18 @@ class WidgetHeatmapWindow(private val project: Project) {
         val className: String,
         val usageCount: Int,
         val fileCount: Int,
-        val filePath: String,
-        val isCustomWidget: Boolean = true,
+        val filePath: String?,  // Null for Flutter framework widgets
+        val isCustomWidget: Boolean,
         val extendsWidget: String? = null
     )
 
     init {
         tableModel = WidgetHeatmapTableModel()
+        tableSorter = TableRowSorter(tableModel)
+
         table = JBTable(tableModel).apply {
+            rowSorter = tableSorter
             setDefaultRenderer(Any::class.java, HeatmapCellRenderer())
-            autoCreateRowSorter = true
             fillsViewportHeight = true
             rowHeight = 32
 
@@ -76,9 +79,11 @@ class WidgetHeatmapWindow(private val project: Project) {
             addMouseListener(object : java.awt.event.MouseAdapter() {
                 override fun mouseClicked(e: java.awt.event.MouseEvent) {
                     if (e.clickCount == 2) {
-                        val row = rowAtPoint(e.point)
-                        if (row >= 0) {
-                            openWidgetFile(row)
+                        val viewRow = rowAtPoint(e.point)
+                        if (viewRow >= 0) {
+                            // Convert view row to model row for sorted tables
+                            val modelRow = convertRowIndexToModel(viewRow)
+                            openWidgetFile(modelRow)
                         }
                     }
                 }
@@ -165,7 +170,7 @@ class WidgetHeatmapWindow(private val project: Project) {
         ProgressManager.getInstance().run(object : Task.Backgroundable(
             project,
             "Analyzing widget usage",
-            true  // Cancelable
+            true
         ) {
             override fun run(indicator: ProgressIndicator) {
                 indicator.text = "Scanning Dart files..."
@@ -177,11 +182,12 @@ class WidgetHeatmapWindow(private val project: Project) {
                     val dartFiles = findAllDartFiles()
                     val totalFiles = dartFiles.size
 
+                    // Step 1: Find all custom widget classes
                     dartFiles.forEachIndexed { index, dartFile ->
                         if (indicator.isCanceled) return@forEachIndexed
 
-                        indicator.fraction = index.toDouble() / totalFiles
-                        indicator.text = "Analyzing ${dartFile.name}..."
+                        indicator.fraction = (index.toDouble() / totalFiles) * 0.5
+                        indicator.text = "Finding widgets in ${dartFile.name}..."
 
                         val classes = PsiTreeUtil.findChildrenOfType(dartFile, DartClass::class.java)
 
@@ -189,8 +195,6 @@ class WidgetHeatmapWindow(private val project: Project) {
                             if (indicator.isCanceled) return@forEach
 
                             val className = dartClass.name ?: return@forEach
-
-                            // Check if it's a widget (extends StatelessWidget, StatefulWidget, etc.)
                             val superClass = dartClass.superClass?.text
                             val isWidget = superClass != null && (
                                     superClass.contains("Widget") ||
@@ -198,19 +202,72 @@ class WidgetHeatmapWindow(private val project: Project) {
                                     )
 
                             if (isWidget) {
-                                indicator.text2 = "Counting usages for $className..."
-                                val usageCount = countUsages(dartClass, indicator)
-                                val fileCount = countFileReferences(dartClass, indicator)
-
                                 widgetUsages[className] = WidgetUsageInfo(
                                     className = className,
-                                    usageCount = usageCount,
-                                    fileCount = fileCount,
+                                    usageCount = 0,  // Will count later
+                                    fileCount = 0,   // Will count later
                                     filePath = dartFile.virtualFile.path,
                                     isCustomWidget = true,
                                     extendsWidget = superClass
                                 )
                             }
+                        }
+                    }
+
+                    // Step 2: Count all widget usages (custom + Flutter widgets)
+                    val allWidgetReferences = mutableMapOf<String, MutableMap<String, Int>>()
+
+                    dartFiles.forEachIndexed { index, dartFile ->
+                        if (indicator.isCanceled) return@forEachIndexed
+
+                        indicator.fraction = 0.5 + (index.toDouble() / totalFiles) * 0.5
+                        indicator.text = "Counting widget usage in ${dartFile.name}..."
+
+                        // Count widget references per file
+                        val widgetCountInFile = mutableMapOf<String, Int>()
+
+                        // Find all reference expressions (widget instantiations)
+                        val references = PsiTreeUtil.findChildrenOfType(dartFile, DartReferenceExpression::class.java)
+
+                        references.forEach { ref ->
+                            val refText = ref.text
+                            // Check if it looks like a widget (starts with uppercase)
+                            if (refText.isNotEmpty() && refText[0].isUpperCase()) {
+                                widgetCountInFile[refText] = widgetCountInFile.getOrDefault(refText, 0) + 1
+                            }
+                        }
+
+                        // Store counts per file
+                        widgetCountInFile.forEach { (widgetName, count) ->
+                            val fileMap = allWidgetReferences.getOrPut(widgetName) { mutableMapOf() }
+                            fileMap[dartFile.virtualFile.path] = count
+                        }
+                    }
+
+                    // Step 3: Update usage counts
+                    allWidgetReferences.forEach { (widgetName, filesMap) ->
+                        if (indicator.isCanceled) return@forEach
+
+                        val fileCount = filesMap.size
+                        val usageCount = filesMap.values.sum() // Total count across all files
+
+                        if (widgetName in widgetUsages) {
+                            // Update custom widget
+                            val existing = widgetUsages[widgetName]!!
+                            widgetUsages[widgetName] = existing.copy(
+                                usageCount = usageCount,
+                                fileCount = fileCount
+                            )
+                        } else if (fileCount >= 2) {
+                            // Add Flutter/external widget if used in multiple places
+                            widgetUsages[widgetName] = WidgetUsageInfo(
+                                className = widgetName,
+                                usageCount = usageCount,
+                                fileCount = fileCount,
+                                filePath = null,  // No source file for Flutter widgets
+                                isCustomWidget = false,
+                                extendsWidget = "Flutter Widget"
+                            )
                         }
                     }
                 }
@@ -241,17 +298,11 @@ class WidgetHeatmapWindow(private val project: Project) {
     private fun findAllDartFiles(): List<DartFile> {
         val dartFiles = mutableListOf<DartFile>()
         val psiManager = PsiManager.getInstance(project)
-
-        // Use projectScope to limit to current project only
         val scope = GlobalSearchScope.projectScope(project)
-
-        // Get the project base path to ensure we only scan the actual project lib folder
         val projectBasePath = project.basePath ?: return emptyList()
 
         com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
             .iterateContent { virtualFile ->
-                // Only include Dart files in the project's lib/ directory
-                // Exclude symlinks, build folders, and plugin examples
                 if (virtualFile.extension == "dart" &&
                     scope.contains(virtualFile) &&
                     virtualFile.path.startsWith(projectBasePath) &&
@@ -259,7 +310,6 @@ class WidgetHeatmapWindow(private val project: Project) {
                     !virtualFile.path.contains("/.symlinks/") &&
                     !virtualFile.path.contains("/build/") &&
                     !virtualFile.path.contains("/.dart_tool/") &&
-                    !virtualFile.path.contains("/.github/") &&
                     !virtualFile.path.contains("/example/")) {
 
                     psiManager.findFile(virtualFile)?.let { psiFile ->
@@ -274,54 +324,6 @@ class WidgetHeatmapWindow(private val project: Project) {
         return dartFiles
     }
 
-    private fun countUsages(dartClass: DartClass, indicator: ProgressIndicator): Int {
-        if (indicator.isCanceled) return 0
-
-        val componentName = dartClass.componentName ?: return 0
-        var count = 0
-
-        try {
-            val handler = DartServerFindUsagesHandler(dartClass)
-            // Use projectScope to limit search to current project only
-            val options = FindUsagesOptions(GlobalSearchScope.projectScope(project))
-            options.isUsages = true
-
-            handler.processElementUsages(componentName, { _ ->
-                if (indicator.isCanceled) return@processElementUsages false
-                count++
-                count < 1000 // Limit to prevent performance issues
-            }, options)
-        } catch (_: Exception) {
-            // Fail gracefully
-        }
-
-        return count
-    }
-
-    private fun countFileReferences(dartClass: DartClass, indicator: ProgressIndicator): Int {
-        if (indicator.isCanceled) return 0
-
-        val componentName = dartClass.componentName ?: return 0
-        val files = mutableSetOf<String>()
-
-        try {
-            val handler = DartServerFindUsagesHandler(dartClass)
-            // Use projectScope to limit search to current project only
-            val options = FindUsagesOptions(GlobalSearchScope.projectScope(project))
-            options.isUsages = true
-
-            handler.processElementUsages(componentName, { usage ->
-                if (indicator.isCanceled) return@processElementUsages false
-                usage.element?.containingFile?.virtualFile?.path?.let { files.add(it) }
-                files.size < 500 // Limit to prevent performance issues
-            }, options)
-        } catch (_: Exception) {
-            // Fail gracefully
-        }
-
-        return files.size
-    }
-
     private fun updateStatusLabel(widgetCount: Int) {
         val timeStr = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault())
@@ -330,10 +332,12 @@ class WidgetHeatmapWindow(private val project: Project) {
         statusLabel.text = "Found $widgetCount widgets • Last updated: $timeStr"
     }
 
-    private fun openWidgetFile(row: Int) {
-        val widgetInfo = tableModel.getWidgetAt(row) ?: return
+    private fun openWidgetFile(modelRow: Int) {
+        val widgetInfo = tableModel.getWidgetAt(modelRow) ?: return
+        val filePath = widgetInfo.filePath ?: return  // Can't open Flutter framework widgets
+
         val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-            .findFileByPath(widgetInfo.filePath) ?: return
+            .findFileByPath(filePath) ?: return
 
         FileEditorManager.getInstance(project).openFile(virtualFile, true)
     }
@@ -397,9 +401,10 @@ class WidgetHeatmapWindow(private val project: Project) {
         val result = chooser.save(null as com.intellij.openapi.vfs.VirtualFile?, "widget_heatmap.csv")
         result?.let { wrapper ->
             val csv = buildString {
-                appendLine("Widget Name,Usage Count,File Count,Extends,File Path")
+                appendLine("Widget Name,Usage Count,File Count,Type,Extends,File Path")
                 tableModel.getAllData().forEach { widget ->
-                    appendLine("${widget.className},${widget.usageCount},${widget.fileCount},${widget.extendsWidget ?: ""},${widget.filePath}")
+                    val type = if (widget.isCustomWidget) "Custom" else "Flutter"
+                    appendLine("${widget.className},${widget.usageCount},${widget.fileCount},$type,${widget.extendsWidget ?: ""},${widget.filePath ?: "N/A"}")
                 }
             }
 
@@ -426,6 +431,8 @@ class WidgetHeatmapWindow(private val project: Project) {
         override fun getColumnName(column: Int): String = columnNames[column]
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any? {
+            if (rowIndex >= filteredData.size) return null
+
             val widget = filteredData[rowIndex]
             return when (columnIndex) {
                 0 -> widget.className
@@ -433,14 +440,14 @@ class WidgetHeatmapWindow(private val project: Project) {
                 2 -> widget.fileCount
                 3 -> widget.usageCount // For heatmap visualization
                 4 -> widget.extendsWidget ?: ""
-                5 -> widget.filePath
+                5 -> widget.filePath ?: "(Flutter Widget)"
                 else -> null
             }
         }
 
         override fun getColumnClass(columnIndex: Int): Class<*> {
             return when (columnIndex) {
-                1, 2, 3 -> Int::class.java
+                1, 2, 3 -> Integer::class.java  // Use Integer instead of Int for proper sorting
                 else -> String::class.java
             }
         }
@@ -493,8 +500,11 @@ class WidgetHeatmapWindow(private val project: Project) {
                     .mapNotNull { table.getValueAt(it, 3) as? Int }
                     .maxOrNull() ?: 1
 
+                // Ensure maxUsage is at least 1 to avoid division by zero
+                val validMaxUsage = maxUsage.coerceAtLeast(1)
+
                 // Create heat color: green (low) -> yellow -> red (high)
-                val intensity = (usageCount.toFloat() / maxUsage).coerceIn(0f, 1f)
+                val intensity = (usageCount.toFloat() / validMaxUsage).coerceIn(0f, 1f)
                 val heatColor = getHeatColor(intensity)
 
                 // Create a panel with colored bar
@@ -502,10 +512,17 @@ class WidgetHeatmapWindow(private val project: Project) {
                     isOpaque = true
                     background = if (isSelected) table.selectionBackground else table.background
 
+                    // Make bar width proportional but with minimum visibility
+                    val barWidth = if (usageCount > 0) {
+                        ((intensity * 80).toInt()).coerceAtLeast(10) // Minimum 10px if > 0
+                    } else {
+                        0
+                    }
+
                     val barPanel = JPanel().apply {
                         isOpaque = true
                         background = heatColor
-                        preferredSize = Dimension((intensity * 60).toInt(), 20)
+                        preferredSize = Dimension(barWidth, 20)
                     }
 
                     val label = JLabel(usageCount.toString(), CENTER).apply {
@@ -523,7 +540,6 @@ class WidgetHeatmapWindow(private val project: Project) {
         private fun getHeatColor(intensity: Float): JBColor {
             return when {
                 intensity < 0.33f -> {
-                    // Green to Yellow (light theme) / Darker Green to Yellow (dark theme)
                     val factor = intensity / 0.33f
                     JBColor(
                         Color(
@@ -539,35 +555,17 @@ class WidgetHeatmapWindow(private val project: Project) {
                     )
                 }
                 intensity < 0.66f -> {
-                    // Yellow to Orange (light theme) / Darker Yellow to Orange (dark theme)
                     val factor = (intensity - 0.33f) / 0.33f
                     JBColor(
-                        Color(
-                            0xFF,
-                            (0xFF + (0xA5 - 0xFF) * factor).toInt(),
-                            0x00
-                        ),
-                        Color(
-                            0xCC,
-                            (0xCC + (0x88 - 0xCC) * factor).toInt(),
-                            0x00
-                        )
+                        Color(0xFF, (0xFF + (0xA5 - 0xFF) * factor).toInt(), 0x00),
+                        Color(0xCC, (0xCC + (0x88 - 0xCC) * factor).toInt(), 0x00)
                     )
                 }
                 else -> {
-                    // Orange to Red (light theme) / Darker Orange to Red (dark theme)
                     val factor = (intensity - 0.66f) / 0.34f
                     JBColor(
-                        Color(
-                            0xFF,
-                            (0xA5 + (0x00 - 0xA5) * factor).toInt(),
-                            0x00
-                        ),
-                        Color(
-                            0xCC,
-                            (0x88 + (0x00 - 0x88) * factor).toInt(),
-                            0x00
-                        )
+                        Color(0xFF, (0xA5 + (0x00 - 0xA5) * factor).toInt(), 0x00),
+                        Color(0xCC, (0x88 + (0x00 - 0x88) * factor).toInt(), 0x00)
                     )
                 }
             }
