@@ -1,4 +1,3 @@
-
 package dev.rutvik.flutter_developer_tools.toolWindow
 
 import com.intellij.icons.AllIcons
