@@ -58,6 +58,33 @@ intellijPlatform {
             <li><b>Code Lens</b>: Usage counts and implementation counts for code elements</li>
         </ul>
 
+        <h4>Visualization Tools</h4>
+        <ul>
+            <li><b>Widget Usage Heatmap Tool Window</b>: Analyze widget usage patterns across your Flutter project
+                <ul>
+                    <li>Visual heatmap with color-coded intensity (green to red)</li>
+                    <li>Sortable table showing usage count, file count, and inheritance info</li>
+                    <li>Filter by custom widgets or high-usage widgets (>10 references)</li>
+                    <li>Export to CSV for further analysis</li>
+                    <li>Double-click navigation to widget definitions</li>
+                    <li>Manual refresh with last updated timestamp</li>
+                    <li>Helps identify refactoring candidates and reusable components</li>
+                </ul>
+            </li>
+            <li><b>Dart Call Graph Tool Window</b>: Visual representation of function/method call relationships
+                <ul>
+                    <li>Interactive graph showing control flow in current Dart file</li>
+                    <li>Color-coded nodes by type (function, method, constructor, getter, setter)</li>
+                    <li>Hierarchical layout with automatic level detection</li>
+                    <li>Zoom in/out/reset controls for large graphs</li>
+                    <li>Auto-refresh when switching files (toggleable)</li>
+                    <li>Filter by top-level functions or methods only</li>
+                    <li>Export to PNG for documentation</li>
+                    <li>Click on nodes to navigate to definitions</li>
+                </ul>
+            </li>
+        </ul>
+
         <h4>Quick Actions</h4>
         <ul>
             <li>Run 'Flutter gen-l10n' directly from .arb files</li>
@@ -69,6 +96,7 @@ intellijPlatform {
             <li>Monorepo-aware package documentation fetching</li>
             <li>Configurable hint display options</li>
             <li>Cache management for optimal performance</li>
+            <li>Full light and dark theme support for all visualization tools</li>
         </ul>
         """.trimIndent()
     }
