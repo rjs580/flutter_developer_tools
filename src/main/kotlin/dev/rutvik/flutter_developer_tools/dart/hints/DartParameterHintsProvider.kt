@@ -8,7 +8,6 @@ import com.intellij.lang.Language
 import com.intellij.openapi.project.DumbService
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.childrenOfType
-import com.intellij.util.containers.ContainerUtil
 import com.jetbrains.lang.dart.DartLanguage
 import com.jetbrains.lang.dart.ide.info.DartFunctionDescription
 import com.jetbrains.lang.dart.psi.*

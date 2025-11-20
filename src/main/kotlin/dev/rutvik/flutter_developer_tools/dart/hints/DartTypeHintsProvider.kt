@@ -4,6 +4,7 @@ package dev.rutvik.flutter_developer_tools.dart.hints
 import com.intellij.codeInsight.hints.*
 import com.intellij.lang.Language
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
@@ -11,6 +12,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
+import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.util.childrenOfType
 import com.intellij.ui.dsl.builder.panel
 import com.jetbrains.lang.dart.DartLanguage
@@ -97,6 +99,8 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
     ) : FactoryInlayHintsCollector(editor) {
 
         override fun collect(element: PsiElement, editor: Editor, sink: InlayHintsSink): Boolean {
+            ProgressManager.checkCanceled()
+
             if (DumbService.isDumb(element.project)) {
                 return true
             }
@@ -140,9 +144,8 @@ class DartTypeHintsProvider : InlayHintsProvider<DartTypeHintsProvider.Settings>
                 val type = getTypeFromAnalyzer(identifier)
                 CachedValueProvider.Result.create(
                     type,
-                    identifier.containingFile, // Invalidate when file changes
                     identifier,
-                    com.intellij.psi.util.PsiModificationTracker.getInstance(element.project)
+                    PsiModificationTracker.getInstance(element.project)
                 )
             }
         }

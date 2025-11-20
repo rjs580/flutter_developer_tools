@@ -6,6 +6,7 @@ import com.intellij.codeInsight.daemon.impl.PsiElementListNavigator
 import com.intellij.codeInsight.hints.codeVision.InheritorsCodeVisionProvider
 import com.intellij.ide.util.DefaultPsiElementCellRenderer
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
@@ -43,6 +44,8 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
     }
 
     override fun getHint(element: PsiElement, file: PsiFile): String? {
+        ProgressManager.checkCanceled()
+
         if (DumbService.isDumb(element.project)) {
             return null
         }
@@ -57,6 +60,9 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
         }
 
         val anchor = element.componentName ?: return null
+
+        ProgressManager.checkCanceled()
+        
         val items = das.search_getTypeHierarchy(
             file.virtualFile,
             anchor.textRange.startOffset,

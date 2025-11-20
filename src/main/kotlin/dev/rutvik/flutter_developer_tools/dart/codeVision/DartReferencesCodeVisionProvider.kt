@@ -75,6 +75,8 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
     }
 
     override fun getHint(element: PsiElement, file: PsiFile): String? {
+        ProgressManager.checkCanceled()
+
         if (DumbService.isDumb(element.project)) {
             return null
         }
