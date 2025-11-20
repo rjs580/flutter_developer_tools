@@ -56,8 +56,7 @@
         <h4>📊 Visualization Tools</h4>
         <ul>
             <li><b>Widget Usage Heatmap</b>: Visual analysis of widget usage across your project with color-coded intensity indicators</li>
-            <li><b>Dart Call Graph</b>: Interactive visualization of function/method call relationships with zoom and export capabilities</li>
-            <li>Both tools support filtering, CSV/PNG export, and auto-refresh</li>
+            <li>Support filtering, CSV/PNG export, and auto-refresh</li>
         </ul>
 
         <h4>⚡ Quick Actions</h4>
@@ -101,18 +100,6 @@
                     <li>Double-click navigation to widget definitions</li>
                     <li>Manual refresh with last updated timestamp</li>
                     <li>Helps identify refactoring candidates and reusable components</li>
-                </ul>
-            </li>
-            <li><b>Dart Call Graph Tool Window</b>: Visual representation of function/method call relationships
-                <ul>
-                    <li>Interactive graph showing control flow in current Dart file</li>
-                    <li>Color-coded nodes by type (function, method, constructor, getter, setter)</li>
-                    <li>Hierarchical layout with automatic level detection</li>
-                    <li>Zoom in/out/reset controls for large graphs</li>
-                    <li>Auto-refresh when switching files (toggleable)</li>
-                    <li>Filter by top-level functions or methods only</li>
-                    <li>Export to PNG for documentation</li>
-                    <li>Click on nodes to navigate to definitions</li>
                 </ul>
             </li>
         </ul>
@@ -210,12 +197,7 @@
         <toolWindow id="Flutter Widget Heatmap"
                     factoryClass="dev.rutvik.flutter_developer_tools.toolWindow.WidgetHeatmapToolWindowFactory"
                     anchor="right"
-                    icon="AllIcons.Toolwindows.ToolWindowStructure"/>
-
-        <toolWindow id="Dart Call Graph"
-                    factoryClass="dev.rutvik.flutter_developer_tools.toolWindow.CallGraphToolWindowFactory"
-                    anchor="bottom"
-                    icon="AllIcons.Toolwindows.ToolWindowHierarchy"/>
+                    icon="AllIcons.Nodes.Library"/>
 
         <!-- Settings -->
         <applicationService

@@ -62,15 +62,26 @@ class WidgetHeatmapWindow(private val project: Project) {
 
         table = JBTable(tableModel).apply {
             rowSorter = tableSorter
-            setDefaultRenderer(Any::class.java, HeatmapCellRenderer())
             fillsViewportHeight = true
-            rowHeight = 32
+            rowHeight = 36
+            showVerticalLines = false
+            showHorizontalLines = true
+            gridColor = JBColor.border()
+            intercellSpacing = Dimension(0, 1)
+
+            // Set renderers for specific columns
+            columnModel.getColumn(0).cellRenderer = WidgetNameRenderer()
+            columnModel.getColumn(1).cellRenderer = NumberRenderer()
+            columnModel.getColumn(2).cellRenderer = NumberRenderer()
+            columnModel.getColumn(3).cellRenderer = HeatmapBarRenderer()
+            columnModel.getColumn(4).cellRenderer = TypeRenderer()
+            columnModel.getColumn(5).cellRenderer = PathRenderer()
 
             // Column widths
-            columnModel.getColumn(0).preferredWidth = 250 // Widget Name
-            columnModel.getColumn(1).preferredWidth = 100 // Usage Count
-            columnModel.getColumn(2).preferredWidth = 100 // File Count
-            columnModel.getColumn(3).preferredWidth = 80  // Heatmap
+            columnModel.getColumn(0).preferredWidth = 200 // Widget Name
+            columnModel.getColumn(1).preferredWidth = 80  // Usage Count
+            columnModel.getColumn(2).preferredWidth = 80  // File Count
+            columnModel.getColumn(3).preferredWidth = 150 // Heatmap
             columnModel.getColumn(4).preferredWidth = 150 // Extends
             columnModel.getColumn(5).preferredWidth = 300 // File Path
 
@@ -80,7 +91,6 @@ class WidgetHeatmapWindow(private val project: Project) {
                     if (e.clickCount == 2) {
                         val viewRow = rowAtPoint(e.point)
                         if (viewRow >= 0) {
-                            // Convert view row to model row for sorted tables
                             val modelRow = convertRowIndexToModel(viewRow)
                             openWidgetFile(modelRow)
                         }
@@ -481,8 +491,10 @@ class WidgetHeatmapWindow(private val project: Project) {
         fun getAllData(): List<WidgetUsageInfo> = allData
     }
 
-    // Custom Cell Renderer with Heatmap Visualization
-    class HeatmapCellRenderer : DefaultTableCellRenderer() {
+    // Custom Cell Renderers for better visual appearance
+
+    // Widget Name Renderer - Bold and prominent
+    class WidgetNameRenderer : DefaultTableCellRenderer() {
         override fun getTableCellRendererComponent(
             table: JTable?,
             value: Any?,
@@ -491,80 +503,221 @@ class WidgetHeatmapWindow(private val project: Project) {
             row: Int,
             column: Int
         ): Component {
-            val component = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            val label = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column) as JLabel
+            label.font = label.font.deriveFont(Font.BOLD)
+            label.border = JBUI.Borders.empty(4, 8)
+            return label
+        }
+    }
 
-            if (table != null && column == 3) { // Heatmap column
-                val usageCount = value as? Int ?: 0
-                val maxUsage = (0 until table.rowCount)
-                    .mapNotNull { table.getValueAt(it, 3) as? Int }
-                    .maxOrNull() ?: 1
+    // Number Renderer - Right aligned with styling
+    class NumberRenderer : DefaultTableCellRenderer() {
+        init {
+            horizontalAlignment = RIGHT
+        }
 
-                // Ensure maxUsage is at least 1 to avoid division by zero
-                val validMaxUsage = maxUsage.coerceAtLeast(1)
+        override fun getTableCellRendererComponent(
+            table: JTable?,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            val label = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column) as JLabel
+            label.border = JBUI.Borders.empty(4, 12, 4, 8)
+            label.foreground = if (isSelected) table?.selectionForeground else JBColor.foreground()
+            return label
+        }
+    }
 
-                // Create heat color: green (low) -> yellow -> red (high)
-                val intensity = (usageCount.toFloat() / validMaxUsage).coerceIn(0f, 1f)
-                val heatColor = getHeatColor(intensity)
+    // Type/Extends Renderer - Subtle styling
+    class TypeRenderer : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable?,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            val label = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column) as JLabel
+            label.foreground = if (isSelected) table?.selectionForeground else JBColor.GRAY
+            label.border = JBUI.Borders.empty(4, 8)
+            return label
+        }
+    }
 
-                // Create a panel with colored bar
-                return JPanel(BorderLayout()).apply {
+    // Path Renderer - Even more subtle
+    class PathRenderer : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable?,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            val label = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column) as JLabel
+            label.foreground = if (isSelected) table?.selectionForeground else JBColor.GRAY.darker()
+            label.font = label.font.deriveFont(Font.PLAIN, label.font.size - 1f)
+            label.border = JBUI.Borders.empty(4, 8)
+            return label
+        }
+    }
+
+    // Heatmap Bar Renderer - Visual graph
+    class HeatmapBarRenderer : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable?,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            if (table == null) return super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+
+            val usageCount = value as? Int ?: 0
+            val maxUsage = (0 until table.rowCount)
+                .mapNotNull { table.model.getValueAt(table.convertRowIndexToModel(it), 3) as? Int }
+                .maxOrNull() ?: 1
+
+            val validMaxUsage = maxUsage.coerceAtLeast(1)
+            val intensity = (usageCount.toFloat() / validMaxUsage).coerceIn(0f, 1f)
+
+            return object : JPanel() {
+                init {
+                    layout = BorderLayout()
                     isOpaque = true
                     background = if (isSelected) table.selectionBackground else table.background
+                    border = JBUI.Borders.empty(4, 8)
+                }
 
-                    // Make bar width proportional but with minimum visibility
-                    val barWidth = if (usageCount > 0) {
-                        ((intensity * 80).toInt()).coerceAtLeast(10) // Minimum 10px if > 0
+                override fun getAccessibleContext(): javax.accessibility.AccessibleContext {
+                    if (accessibleContext == null) {
+                        accessibleContext = object : AccessibleJPanel() {
+                            override fun getAccessibleName(): String {
+                                return "Usage heatmap: $usageCount"
+                            }
+
+                            override fun getAccessibleDescription(): String {
+                                return "Widget usage count is $usageCount"
+                            }
+                        }
+                    }
+                    return accessibleContext
+                }
+
+                override fun paintComponent(g: Graphics) {
+                    super.paintComponent(g)
+                    val g2d = g as Graphics2D
+                    g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                    g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+
+                    if (usageCount > 0) {
+                        val heatColor = getHeatColor(intensity)
+                        val barHeight = height - 8
+                        val barY = 4
+                        val maxBarWidth = width - 50 // Leave space for text
+                        val barWidth = ((intensity * maxBarWidth).toInt()).coerceAtLeast(20)
+
+                        // Draw subtle background
+                        g2d.color = if (isSelected) {
+                            table.selectionBackground.darker()
+                        } else {
+                            JBColor.border()
+                        }
+                        g2d.fillRoundRect(0, barY, maxBarWidth, barHeight, 4, 4)
+
+                        // Draw gradient bar
+                        val gradient = GradientPaint(
+                            0f, barY.toFloat(),
+                            heatColor.brighter().brighter(),
+                            barWidth.toFloat(), barY.toFloat(),
+                            heatColor
+                        )
+                        g2d.paint = gradient
+                        g2d.fillRoundRect(0, barY, barWidth, barHeight, 4, 4)
+
+                        // Draw text
+                        g2d.color = if (isSelected) table.selectionForeground else JBColor.foreground()
+                        g2d.font = g2d.font.deriveFont(Font.BOLD, 11f)
+                        val text = usageCount.toString()
+                        val metrics = g2d.fontMetrics
+                        val textX = maxBarWidth + 8
+                        val textY = (height + metrics.ascent - metrics.descent) / 2
+                        g2d.drawString(text, textX, textY)
                     } else {
-                        0
+                        // Show "0" for zero usage
+                        g2d.color = JBColor.GRAY
+                        g2d.font = g2d.font.deriveFont(Font.PLAIN, 11f)
+                        g2d.drawString("0", 4, (height + g2d.fontMetrics.ascent - g2d.fontMetrics.descent) / 2)
                     }
-
-                    val barPanel = JPanel().apply {
-                        isOpaque = true
-                        background = heatColor
-                        preferredSize = Dimension(barWidth, 20)
-                    }
-
-                    val label = JLabel(usageCount.toString(), CENTER).apply {
-                        foreground = if (isSelected) table.selectionForeground else table.foreground
-                    }
-
-                    add(barPanel, BorderLayout.WEST)
-                    add(label, BorderLayout.CENTER)
                 }
             }
-
-            return component
         }
 
         private fun getHeatColor(intensity: Float): JBColor {
             return when {
-                intensity < 0.33f -> {
-                    val factor = intensity / 0.33f
+                intensity < 0.25f -> {
+                    val factor = intensity / 0.25f
                     JBColor(
                         Color(
-                            (0x4C + (0xFF - 0x4C) * factor).toInt(),
-                            (0xAF + (0xFF - 0xAF) * factor).toInt(),
-                            (0x50 + (0x00 - 0x50) * factor).toInt()
+                            (76 + (102 - 76) * factor).toInt(),
+                            (175 + (204 - 175) * factor).toInt(),
+                            (80 + (102 - 80) * factor).toInt()
                         ),
                         Color(
-                            (0x3A + (0xCC - 0x3A) * factor).toInt(),
-                            (0x8C + (0xCC - 0x8C) * factor).toInt(),
-                            (0x3C + (0x00 - 0x3C) * factor).toInt()
+                            (60 + (85 - 60) * factor).toInt(),
+                            (140 + (170 - 140) * factor).toInt(),
+                            (64 + (85 - 64) * factor).toInt()
                         )
                     )
                 }
-                intensity < 0.66f -> {
-                    val factor = (intensity - 0.33f) / 0.33f
+                intensity < 0.5f -> {
+                    val factor = (intensity - 0.25f) / 0.25f
                     JBColor(
-                        Color(0xFF, (0xFF + (0xA5 - 0xFF) * factor).toInt(), 0x00),
-                        Color(0xCC, (0xCC + (0x88 - 0xCC) * factor).toInt(), 0x00)
+                        Color(
+                            (102 + (255 - 102) * factor).toInt(),
+                            (204 + (220 - 204) * factor).toInt(),
+                            (102 + (0 - 102) * factor).toInt()
+                        ),
+                        Color(
+                            (85 + (200 - 85) * factor).toInt(),
+                            (170 + (180 - 170) * factor).toInt(),
+                            (85 + (0 - 85) * factor).toInt()
+                        )
+                    )
+                }
+                intensity < 0.75f -> {
+                    val factor = (intensity - 0.5f) / 0.25f
+                    JBColor(
+                        Color(
+                            255,
+                            (220 + (165 - 220) * factor).toInt(),
+                            0
+                        ),
+                        Color(
+                            200,
+                            (180 + (130 - 180) * factor).toInt(),
+                            0
+                        )
                     )
                 }
                 else -> {
-                    val factor = (intensity - 0.66f) / 0.34f
+                    val factor = (intensity - 0.75f) / 0.25f
                     JBColor(
-                        Color(0xFF, (0xA5 + (0x00 - 0xA5) * factor).toInt(), 0x00),
-                        Color(0xCC, (0x88 + (0x00 - 0x88) * factor).toInt(), 0x00)
+                        Color(
+                            255,
+                            (165 + (0 - 165) * factor).toInt(),
+                            0
+                        ),
+                        Color(
+                            200,
+                            (130 + (0 - 130) * factor).toInt(),
+                            0
+                        )
                     )
                 }
             }

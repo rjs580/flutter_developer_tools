@@ -71,18 +71,6 @@ intellijPlatform {
                     <li>Helps identify refactoring candidates and reusable components</li>
                 </ul>
             </li>
-            <li><b>Dart Call Graph Tool Window</b>: Visual representation of function/method call relationships
-                <ul>
-                    <li>Interactive graph showing control flow in current Dart file</li>
-                    <li>Color-coded nodes by type (function, method, constructor, getter, setter)</li>
-                    <li>Hierarchical layout with automatic level detection</li>
-                    <li>Zoom in/out/reset controls for large graphs</li>
-                    <li>Auto-refresh when switching files (toggleable)</li>
-                    <li>Filter by top-level functions or methods only</li>
-                    <li>Export to PNG for documentation</li>
-                    <li>Click on nodes to navigate to definitions</li>
-                </ul>
-            </li>
         </ul>
 
         <h4>Quick Actions</h4>
