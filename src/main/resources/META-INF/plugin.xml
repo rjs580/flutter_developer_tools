@@ -62,6 +62,7 @@
         <h4>⚡ Quick Actions</h4>
         <ul>
             <li>Run 'Flutter gen-l10n' directly from .arb files</li>
+            <li>Run 'build_runner build/watch' commands for code generation files</li>
         </ul>
 
         <p>
@@ -107,6 +108,7 @@
         <h4>Quick Actions</h4>
         <ul>
             <li>Run 'Flutter gen-l10n' directly from .arb files</li>
+            <li>Run build_runner commands (build/watch/clean) for code generation files</li>
         </ul>
 
         <h4>Additional Features</h4>
@@ -137,6 +139,10 @@
         <!-- ARB File Notification Provider -->
         <editorNotificationProvider
                 implementation="dev.rutvik.flutter_developer_tools.arb.ArbFileNotificationProvider"/>
+
+        <!-- Build Runner Notification Provider -->
+        <editorNotificationProvider
+                implementation="dev.rutvik.flutter_developer_tools.buildRunner.BuildRunnerFileNotificationProvider"/>
 
         <!-- Pub Package Completion -->
         <completion.contributor

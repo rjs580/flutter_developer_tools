@@ -76,6 +76,7 @@ intellijPlatform {
         <h4>Quick Actions</h4>
         <ul>
             <li>Run 'Flutter gen-l10n' directly from .arb files</li>
+            <li>Run build_runner commands (build/watch/clean) for code generation files</li>
         </ul>
 
         <h4>Additional Features</h4>
