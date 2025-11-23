@@ -214,6 +214,10 @@
                 instance="dev.rutvik.flutter_developer_tools.settings.BreadcrumbsConfigurable"
                 id="dev.rutvik.flutter_developer_tools.settings.BreadcrumbsConfigurable"
                 displayName="Flutter Developer Tools"/>
+
+        <!-- Notification Groups -->
+        <notificationGroup id="Flutter Developer Tools"
+                           displayType="BALLOON"/>
     </extensions>
 
     <applicationListeners>

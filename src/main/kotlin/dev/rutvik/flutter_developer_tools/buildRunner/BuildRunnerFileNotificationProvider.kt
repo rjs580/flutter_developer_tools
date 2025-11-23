@@ -1,3 +1,4 @@
+
 package dev.rutvik.flutter_developer_tools.buildRunner
 
 import com.intellij.openapi.fileEditor.FileEditor
@@ -5,6 +6,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotificationProvider
+import com.intellij.ui.EditorNotifications
 import com.intellij.ui.awt.RelativePoint
 import icons.FlutterIcons
 import io.flutter.pub.PubRoot
@@ -151,23 +153,38 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
             icon(FlutterIcons.Dart_16)
             text("Code generation available")
 
-            // "Build" action
-            val buildLabel = createActionLabel("Build") {
-                runBuild()
-            }
-            buildLabel.toolTipText = "Run build_runner build --delete-conflicting-outputs"
+            // Show different buttons based on watch status
+            if (BuildRunnerCommands.isWatchRunning()) {
+                // Show stop button when watch is running
+                val stopLabel = createActionLabel("Stop Watch") {
+                    stopWatch()
+                }
+                stopLabel.toolTipText = "Stop the running build_runner watch process"
+            } else {
+                // Show build and watch buttons when watch is not running
+                val buildLabel = createActionLabel("Build") {
+                    runBuild()
+                }
+                buildLabel.toolTipText = "Run build_runner build --delete-conflicting-outputs"
 
-            // "Watch" action
-            val watchLabel = createActionLabel("Watch") {
-                runWatch()
-            }
-            watchLabel.toolTipText = "Run build_runner watch --delete-conflicting-outputs"
+                val watchLabel = createActionLabel("Watch") {
+                    runWatch()
+                }
+                watchLabel.toolTipText = "Run build_runner watch --delete-conflicting-outputs"
 
-            // Dropdown with more options
-            moreLabel = createActionLabel("More...") {
-                showMoreOptions()
+                // Dropdown with more options
+                moreLabel = createActionLabel("More...") {
+                    showMoreOptions()
+                }
+                moreLabel?.toolTipText = "Show more build_runner options"
             }
-            moreLabel?.toolTipText = "Show more build_runner options"
+        }
+
+        /**
+         * Refreshes the notification panel to reflect current watch state.
+         */
+        private fun refreshPanel() {
+            EditorNotifications.getInstance(project).updateAllNotifications()
         }
 
         /**
@@ -175,6 +192,10 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          */
         private fun showMoreOptions() {
             val group = com.intellij.openapi.actionSystem.DefaultActionGroup().apply {
+                if (BuildRunnerCommands.isWatchRunning()) {
+                    add(BuildRunnerAction("Stop Watch", ::stopWatch))
+                    addSeparator()
+                }
                 add(BuildRunnerAction("Build (no delete conflicts)", ::runBuildNoDelete))
                 add(BuildRunnerAction("Watch (no delete conflicts)", ::runWatchNoDelete))
                 addSeparator()
@@ -201,6 +222,24 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
         }
 
         /**
+         * Stops the running watch process.
+         */
+        private fun stopWatch() {
+            if (BuildRunnerCommands.stopWatch()) {
+                com.intellij.notification.NotificationGroupManager.getInstance()
+                    .getNotificationGroup("Flutter Developer Tools")
+                    .createNotification(
+                        "Build runner watch stopped",
+                        com.intellij.notification.NotificationType.INFORMATION
+                    )
+                    .notify(project)
+
+                // Refresh the panel to show Build/Watch buttons again
+                refreshPanel()
+            }
+        }
+
+        /**
          * Executes build_runner build command.
          */
         private fun runBuild() {
@@ -222,6 +261,9 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
         private fun runWatch() {
             val runner = BuildRunnerCommands(project, flutterSdk)
             runner.runWatch()
+
+            // Refresh the panel to show Stop button
+            refreshPanel()
         }
 
         /**
@@ -230,6 +272,9 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
         private fun runWatchNoDelete() {
             val runner = BuildRunnerCommands(project, flutterSdk)
             runner.runWatchNoDelete()
+
+            // Refresh the panel to show Stop button
+            refreshPanel()
         }
 
         /**
@@ -246,6 +291,9 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
         private fun runWatchVerbose() {
             val runner = BuildRunnerCommands(project, flutterSdk)
             runner.runWatchVerbose()
+
+            // Refresh the panel to show Stop button
+            refreshPanel()
         }
 
         /**

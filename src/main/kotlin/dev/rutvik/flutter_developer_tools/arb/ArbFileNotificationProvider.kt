@@ -29,8 +29,8 @@ class ArbFileNotificationProvider : EditorNotificationProvider {
         project: Project,
         file: VirtualFile
     ): Function<in FileEditor, out JComponent?>? {
-        // Check if the file is an .arb file
-        if (file.extension != "arb") {
+        // Check if the file is an .arb file or l10n.yaml file
+        if (file.extension != "arb" && file.name != "l10n.yaml") {
             return null
         }
 

@@ -4,6 +4,8 @@ package dev.rutvik.flutter_developer_tools.buildRunner
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.ColoredProcessHandler
+import com.intellij.execution.process.ProcessAdapter
+import com.intellij.execution.process.ProcessEvent
 import com.intellij.openapi.project.Project
 import io.flutter.FlutterMessages
 import io.flutter.console.FlutterConsoles
@@ -24,6 +26,30 @@ class BuildRunnerCommands(
     private val project: Project,
     private val flutterSdk: FlutterSdk
 ) {
+    companion object {
+        // Store the currently running watch process handler
+        private var activeWatchHandler: ColoredProcessHandler? = null
+
+        /**
+         * Checks if a watch process is currently running.
+         */
+        fun isWatchRunning(): Boolean {
+            return activeWatchHandler?.isProcessTerminated == false
+        }
+
+        /**
+         * Stops the currently running watch process.
+         */
+        fun stopWatch(): Boolean {
+            val handler = activeWatchHandler
+            if (handler != null && !handler.isProcessTerminated) {
+                handler.destroyProcess()
+                activeWatchHandler = null
+                return true
+            }
+            return false
+        }
+    }
 
     /**
      * Executes the 'dart run build_runner build' command and displays the process output in the Flutter console.
@@ -32,7 +58,17 @@ class BuildRunnerCommands(
      * If the process fails to start, an error message is displayed to the user.
      */
     fun runBuild() {
-        val handler = startProcessOrShowError("build", "build_runner build", "--delete-conflicting-outputs")
+        // Stop any existing watch process
+        if (isWatchRunning()) {
+            FlutterMessages.showWarning(
+                "Build Runner Watch",
+                "A watch process is already running. Please stop it first.",
+                project
+            )
+            return
+        }
+
+        val handler = startProcessOrShowError("build", "--delete-conflicting-outputs")
         if (handler != null) {
             FlutterConsoles.displayProcessLater(handler, project, null) {
                 handler.startNotify()
@@ -44,7 +80,17 @@ class BuildRunnerCommands(
      * Executes the 'dart run build_runner build' command without delete-conflicting-outputs.
      */
     fun runBuildNoDelete() {
-        val handler = startProcessOrShowError("build", "build_runner build")
+        // Stop any existing watch process
+        if (isWatchRunning()) {
+            FlutterMessages.showWarning(
+                "Build Runner Watch",
+                "A watch process is already running. Please stop it first.",
+                project
+            )
+            return
+        }
+
+        val handler = startProcessOrShowError("build")
         if (handler != null) {
             FlutterConsoles.displayProcessLater(handler, project, null) {
                 handler.startNotify()
@@ -60,8 +106,29 @@ class BuildRunnerCommands(
      * If the process fails to start, an error message is displayed to the user.
      */
     fun runWatch() {
-        val handler = startProcessOrShowError("watch", "build_runner watch", "--delete-conflicting-outputs")
+        // Stop any existing watch process
+        if (isWatchRunning()) {
+            FlutterMessages.showWarning(
+                "Build Runner Watch",
+                "A watch process is already running. Please stop it first.",
+                project
+            )
+            return
+        }
+
+        val handler = startProcessOrShowError("watch", "--delete-conflicting-outputs")
         if (handler != null) {
+            activeWatchHandler = handler
+
+            // Add listener to clean up when process terminates
+            handler.addProcessListener(object : ProcessAdapter() {
+                override fun processTerminated(event: ProcessEvent) {
+                    if (activeWatchHandler == handler) {
+                        activeWatchHandler = null
+                    }
+                }
+            })
+
             FlutterConsoles.displayProcessLater(handler, project, null) {
                 handler.startNotify()
             }
@@ -72,8 +139,29 @@ class BuildRunnerCommands(
      * Executes the 'dart run build_runner watch' command without delete-conflicting-outputs.
      */
     fun runWatchNoDelete() {
-        val handler = startProcessOrShowError("watch", "build_runner watch")
+        // Stop any existing watch process
+        if (isWatchRunning()) {
+            FlutterMessages.showWarning(
+                "Build Runner Watch",
+                "A watch process is already running. Please stop it first.",
+                project
+            )
+            return
+        }
+
+        val handler = startProcessOrShowError("watch")
         if (handler != null) {
+            activeWatchHandler = handler
+
+            // Add listener to clean up when process terminates
+            handler.addProcessListener(object : ProcessAdapter() {
+                override fun processTerminated(event: ProcessEvent) {
+                    if (activeWatchHandler == handler) {
+                        activeWatchHandler = null
+                    }
+                }
+            })
+
             FlutterConsoles.displayProcessLater(handler, project, null) {
                 handler.startNotify()
             }
@@ -84,7 +172,17 @@ class BuildRunnerCommands(
      * Executes the 'dart run build_runner build --verbose' command and displays the process output in the Flutter console.
      */
     fun runBuildVerbose() {
-        val handler = startProcessOrShowError("build", "build_runner build (verbose)", "--delete-conflicting-outputs", "--verbose")
+        // Stop any existing watch process
+        if (isWatchRunning()) {
+            FlutterMessages.showWarning(
+                "Build Runner Watch",
+                "A watch process is already running. Please stop it first.",
+                project
+            )
+            return
+        }
+
+        val handler = startProcessOrShowError("build", "--delete-conflicting-outputs", "--verbose")
         if (handler != null) {
             FlutterConsoles.displayProcessLater(handler, project, null) {
                 handler.startNotify()
@@ -96,8 +194,29 @@ class BuildRunnerCommands(
      * Executes the 'dart run build_runner watch --verbose' command and displays the process output in the Flutter console.
      */
     fun runWatchVerbose() {
-        val handler = startProcessOrShowError("watch", "build_runner watch (verbose)", "--delete-conflicting-outputs", "--verbose")
+        // Stop any existing watch process
+        if (isWatchRunning()) {
+            FlutterMessages.showWarning(
+                "Build Runner Watch",
+                "A watch process is already running. Please stop it first.",
+                project
+            )
+            return
+        }
+
+        val handler = startProcessOrShowError("watch", "--delete-conflicting-outputs", "--verbose")
         if (handler != null) {
+            activeWatchHandler = handler
+
+            // Add listener to clean up when process terminates
+            handler.addProcessListener(object : ProcessAdapter() {
+                override fun processTerminated(event: ProcessEvent) {
+                    if (activeWatchHandler == handler) {
+                        activeWatchHandler = null
+                    }
+                }
+            })
+
             FlutterConsoles.displayProcessLater(handler, project, null) {
                 handler.startNotify()
             }
@@ -108,7 +227,17 @@ class BuildRunnerCommands(
      * Executes the 'dart run build_runner clean' command and displays the process output in the Flutter console.
      */
     fun runClean() {
-        val handler = startProcessOrShowError("clean", "build_runner clean")
+        // Stop any existing watch process
+        if (isWatchRunning()) {
+            FlutterMessages.showWarning(
+                "Build Runner Watch",
+                "A watch process is already running. Please stop it first.",
+                project
+            )
+            return
+        }
+
+        val handler = startProcessOrShowError("clean")
         if (handler != null) {
             FlutterConsoles.displayProcessLater(handler, project, null) {
                 handler.startNotify()
@@ -120,15 +249,14 @@ class BuildRunnerCommands(
      * Attempts to start the build_runner process and returns a process handler.
      *
      * @param command The build_runner command to execute (build, watch, or clean)
-     * @param presentableName The name to display in the console tab
      * @param additionalArgs Additional arguments to pass to the command
      * @return ColoredProcessHandler if the process starts successfully, null if an error occurs
      */
-    private fun startProcessOrShowError(command: String, presentableName: String, vararg additionalArgs: String): ColoredProcessHandler? {
+    private fun startProcessOrShowError(command: String, vararg additionalArgs: String): ColoredProcessHandler? {
         try {
             val commandLine = createGeneralCommandLine(command, *additionalArgs)
             val handler = ColoredProcessHandler(commandLine)
-            // Set the presentable command line to hide the full path
+            // Ensure the process and all child processes are killed when stop is pressed
             handler.setShouldDestroyProcessRecursively(true)
             return handler
         } catch (e: ExecutionException) {
