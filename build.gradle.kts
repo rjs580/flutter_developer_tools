@@ -39,7 +39,7 @@ intellijPlatform {
         }
 
         changeNotes = """
-        <h3>Version 1.0.0</h3>
+         <h3>Version 1.0.0</h3>
         <h4>Pubspec.yaml Intelligence</h4>
         <ul>
             <li><b>Smart Auto-completion</b>: Pub.dev package suggestions with popularity indicators</li>
@@ -58,6 +58,18 @@ intellijPlatform {
             <li><b>Code Lens</b>: Usage counts and implementation counts for code elements</li>
         </ul>
 
+        <h4>Code Quality Tools</h4>
+        <ul>
+            <li><b>Duplicate Code Detection</b>: AST-based duplicate detection with intelligent filtering
+                <ul>
+                    <li>Identifies structurally similar code regardless of variable names</li>
+                    <li>Navigate between duplicates with persistent highlighting</li>
+                    <li>Side-by-side comparison view with diff visualization</li>
+                    <li>Quick fixes to show all duplicates or navigate to next</li>
+                </ul>
+            </li>
+        </ul>
+
         <h4>Visualization Tools</h4>
         <ul>
             <li><b>Widget Usage Heatmap Tool Window</b>: Analyze widget usage patterns across your Flutter project
@@ -69,6 +81,14 @@ intellijPlatform {
                     <li>Double-click navigation to widget definitions</li>
                     <li>Manual refresh with last updated timestamp</li>
                     <li>Helps identify refactoring candidates and reusable components</li>
+                </ul>
+            </li>
+            <li><b>Duplicate Code Browser</b>: Interactive tool window for comparing duplicates
+                <ul>
+                    <li>Full code preview with syntax highlighting</li>
+                    <li>Side-by-side diff view</li>
+                    <li>Navigate to any duplicate with single click</li>
+                    <li>Shows file location and line numbers</li>
                 </ul>
             </li>
         </ul>

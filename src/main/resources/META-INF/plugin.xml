@@ -59,7 +59,6 @@
             <li><b>Quick Navigation</b>: Cycle through all duplicates with "Navigate to next duplicate"</li>
             <li><b>Visual Comparison</b>: Side-by-side diff view showing all duplicate locations</li>
             <li><b>Persistent Highlighting</b>: Highlights remain visible until dismissed for easy comparison</li>
-            <li><b>Configurable Thresholds</b>: Adjust sensitivity to match your project needs</li>
         </ul>
 
         <h4>📊 Visualization Tools</h4>
@@ -108,7 +107,6 @@
                     <li>Navigate between duplicates with persistent highlighting</li>
                     <li>Side-by-side comparison view with diff visualization</li>
                     <li>Quick fixes to show all duplicates or navigate to next</li>
-                    <li>Configurable thresholds (minimum 30 tokens, 5 statements)</li>
                 </ul>
             </li>
         </ul>
@@ -246,13 +244,6 @@
                     factoryClass="dev.rutvik.flutter_developer_tools.toolWindow.WidgetHeatmapToolWindowFactory"
                     anchor="right"
                     icon="AllIcons.Nodes.Library"/>
-
-<!--        <toolWindow id="Dart Duplicates"-->
-<!--                    factoryClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicatesToolWindowFactory"-->
-<!--                    anchor="bottom"-->
-<!--                    icon="AllIcons.Toolwindows.ToolWindowFind"-->
-<!--                    canCloseContents="true"-->
-<!--                    doNotActivateOnStart="true"/>-->
 
         <!-- Settings -->
         <applicationService

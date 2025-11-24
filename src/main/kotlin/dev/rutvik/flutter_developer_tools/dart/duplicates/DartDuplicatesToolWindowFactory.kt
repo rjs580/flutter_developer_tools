@@ -89,14 +89,28 @@ private class DuplicatesPanel(
     private val tableModel: DuplicatesTableModel
     private val previewEditor: EditorEx
     private val showCheckboxes = allDuplicates.size > 2
+    private val selectionOrder = mutableListOf<Int>()
 
     init {
         tableModel = DuplicatesTableModel(allDuplicates, currentDuplicate, showCheckboxes)
-        table = JBTable(tableModel).apply {
+        table = object : JBTable(tableModel) {
+            override fun changeSelection(rowIndex: Int, columnIndex: Int, toggle: Boolean, extend: Boolean) {
+                // For checkbox column, handle selection manually via mouse listener
+                if (showCheckboxes && columnIndex == 0) {
+                    return
+                }
+                super.changeSelection(rowIndex, columnIndex, toggle, extend)
+            }
+        }
+
+        table.apply {
             setDefaultRenderer(String::class.java, DuplicateCellRenderer(currentDuplicate))
             rowHeight = 32
             showVerticalLines = false
             showHorizontalLines = true
+
+            // Disable cell editing to prevent interference with checkbox clicks
+            setDefaultEditor(Any::class.java, null)
 
             // Configure checkbox column if needed
             if (showCheckboxes) {
@@ -135,9 +149,24 @@ private class DuplicatesPanel(
                 }
             }
 
+            // Selection listener for preview
+            selectionModel.addListSelectionListener { e ->
+                if (!e.valueIsAdjusting) {
+                    val row = selectedRow
+                    if (row >= 0 && selectedRowCount == 1) {
+                        updatePreview(allDuplicates[row])
+                    }
+
+                    // Track selection order and limit to 2 selections for checkboxes
+                    if (showCheckboxes) {
+                        updateSelectionOrder()
+                    }
+                }
+            }
+
             // Mouse listener for checkbox clicks and double-click navigation
             addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) {
+                override fun mousePressed(e: MouseEvent) {
                     val row = rowAtPoint(e.point)
                     val col = columnAtPoint(e.point)
 
@@ -148,15 +177,29 @@ private class DuplicatesPanel(
                         // Toggle selection on checkbox click
                         if (isRowSelected(row)) {
                             removeRowSelectionInterval(row, row)
+                            selectionOrder.remove(row)
                         } else {
+                            // Check if we already have 2 selections
+                            if (selectedRowCount >= 2 && selectionOrder.size >= 2) {
+                                // Remove the oldest selection
+                                val oldestRow = selectionOrder.removeAt(0)
+                                removeRowSelectionInterval(oldestRow, oldestRow)
+                            }
                             addRowSelectionInterval(row, row)
+                            selectionOrder.add(row)
                         }
-                        e.consume()
-                        return
+                        repaint() // Force repaint to update checkbox state
                     }
+                }
 
-                    // Handle double-click navigation
-                    if (e.clickCount == 2) {
+                override fun mouseClicked(e: MouseEvent) {
+                    val row = rowAtPoint(e.point)
+                    val col = columnAtPoint(e.point)
+
+                    if (row < 0) return
+
+                    // Handle double-click navigation (but not on checkbox column)
+                    if (e.clickCount == 2 && col != 0) {
                         navigateToDuplicate(row)
                     }
                 }
@@ -257,6 +300,27 @@ private class DuplicatesPanel(
 
         // Reset scroll position
         previewEditor.scrollingModel.scrollVertically(0)
+    }
+
+    private fun updateSelectionOrder() {
+        // Get currently selected rows
+        val currentlySelected = table.selectedRows.toSet()
+
+        // Remove deselected rows from order tracking
+        selectionOrder.removeAll { !currentlySelected.contains(it) }
+
+        // Add newly selected rows to order tracking
+        currentlySelected.forEach { row ->
+            if (!selectionOrder.contains(row)) {
+                selectionOrder.add(row)
+            }
+        }
+
+        // If more than 2 selections, remove the oldest ones
+        while (selectionOrder.size > 2) {
+            val oldestRow = selectionOrder.removeAt(0)
+            table.removeRowSelectionInterval(oldestRow, oldestRow)
+        }
     }
 
     private fun navigateToDuplicate(row: Int) {
@@ -381,7 +445,13 @@ private class DuplicatesPanel(
         override fun actionPerformed(e: AnActionEvent) {
             val row = table.selectedRow
             if (row >= 0) {
+                // Navigate to the current selection
                 navigateToDuplicate(row)
+
+                // Move to next duplicate with wrap-around
+                val nextRow = (row + 1) % allDuplicates.size
+                table.setRowSelectionInterval(nextRow, nextRow)
+                table.scrollRectToVisible(table.getCellRect(nextRow, 0, true))
             }
         }
 
