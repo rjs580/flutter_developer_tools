@@ -18,7 +18,7 @@
 
         <p>
             Supercharge your Flutter and Dart development with intelligent pubspec.yaml management,
-            enhanced code documentation, advanced navigation tools, and powerful visualization features—all seamlessly integrated into your IDE.
+            enhanced code documentation, advanced navigation tools, powerful visualization features, and code quality analysis—all seamlessly integrated into your IDE.
         </p>
 
         <h3>Key Features</h3>
@@ -53,10 +53,20 @@
             <li>Configurable display options (before/after identifier)</li>
         </ul>
 
+        <h4>🔄 Duplicate Code Detection</h4>
+        <ul>
+            <li><b>Smart Detection</b>: Identifies duplicate code fragments using AST-based structural analysis</li>
+            <li><b>Quick Navigation</b>: Cycle through all duplicates with "Navigate to next duplicate"</li>
+            <li><b>Visual Comparison</b>: Side-by-side diff view showing all duplicate locations</li>
+            <li><b>Persistent Highlighting</b>: Highlights remain visible until dismissed for easy comparison</li>
+            <li><b>Configurable Thresholds</b>: Adjust sensitivity to match your project needs</li>
+        </ul>
+
         <h4>📊 Visualization Tools</h4>
         <ul>
             <li><b>Widget Usage Heatmap</b>: Visual analysis of widget usage across your project with color-coded intensity indicators</li>
-            <li>Support filtering, CSV/PNG export, and auto-refresh</li>
+            <li><b>Duplicate Code Browser</b>: Compare and navigate between duplicate code fragments</li>
+            <li>Support filtering, CSV export, and auto-refresh</li>
         </ul>
 
         <h4>⚡ Quick Actions</h4>
@@ -90,6 +100,19 @@
             <li><b>Code Lens</b>: Usage counts and implementation counts for code elements</li>
         </ul>
 
+        <h4>Code Quality Tools</h4>
+        <ul>
+            <li><b>Duplicate Code Detection</b>: AST-based duplicate detection with intelligent filtering
+                <ul>
+                    <li>Identifies structurally similar code regardless of variable names</li>
+                    <li>Navigate between duplicates with persistent highlighting</li>
+                    <li>Side-by-side comparison view with diff visualization</li>
+                    <li>Quick fixes to show all duplicates or navigate to next</li>
+                    <li>Configurable thresholds (minimum 30 tokens, 5 statements)</li>
+                </ul>
+            </li>
+        </ul>
+
         <h4>Visualization Tools</h4>
         <ul>
             <li><b>Widget Usage Heatmap Tool Window</b>: Analyze widget usage patterns across your Flutter project
@@ -101,6 +124,14 @@
                     <li>Double-click navigation to widget definitions</li>
                     <li>Manual refresh with last updated timestamp</li>
                     <li>Helps identify refactoring candidates and reusable components</li>
+                </ul>
+            </li>
+            <li><b>Duplicate Code Browser</b>: Interactive tool window for comparing duplicates
+                <ul>
+                    <li>Full code preview with syntax highlighting</li>
+                    <li>Side-by-side diff view</li>
+                    <li>Navigate to any duplicate with single click</li>
+                    <li>Shows file location and line numbers</li>
                 </ul>
             </li>
         </ul>
@@ -197,10 +228,6 @@
                 implementation="dev.rutvik.flutter_developer_tools.dart.breadcrumbs.DartBreadcrumbsProvider"/>
 
         <!-- Duplicate Code Detection -->
-        <annotator
-                language="Dart"
-                implementationClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicateCodeAnnotator"/>
-
         <localInspection
                 language="Dart"
                 shortName="DartDuplicateCode"
@@ -220,11 +247,12 @@
                     anchor="right"
                     icon="AllIcons.Nodes.Library"/>
 
-        <toolWindow id="Dart Duplicates"
-                    factoryClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicatesToolWindowFactory"
-                    anchor="bottom"
-                    icon="AllIcons.Toolwindows.ToolWindowFind"
-                    canCloseContents="true"/>
+<!--        <toolWindow id="Dart Duplicates"-->
+<!--                    factoryClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicatesToolWindowFactory"-->
+<!--                    anchor="bottom"-->
+<!--                    icon="AllIcons.Toolwindows.ToolWindowFind"-->
+<!--                    canCloseContents="true"-->
+<!--                    doNotActivateOnStart="true"/>-->
 
         <!-- Settings -->
         <applicationService

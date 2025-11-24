@@ -1,15 +1,25 @@
 package dev.rutvik.flutter_developer_tools.dart.duplicates
 
+import com.intellij.diff.DiffContentFactory
+import com.intellij.diff.DiffManager
+import com.intellij.diff.requests.SimpleDiffRequest
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.ui.JBSplitter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
+import com.jetbrains.lang.dart.DartFileType
 import dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicatesFinder.DuplicateInfo
 import java.awt.BorderLayout
 import java.awt.Component
@@ -31,6 +41,8 @@ class DartDuplicatesToolWindowFactory : ToolWindowFactory {
         )
         toolWindow.contentManager.addContent(content)
     }
+
+    override fun shouldBeAvailable(project: Project): Boolean = false // Don't show until needed
 
     private fun createEmptyPanel(): JPanel {
         return JPanel(BorderLayout()).apply {
@@ -61,7 +73,7 @@ class DartDuplicatesToolWindowFactory : ToolWindowFactory {
 }
 
 /**
- * Panel showing all duplicate code fragments in a table.
+ * Panel showing all duplicate code fragments with preview and diff view.
  */
 private class DuplicatesPanel(
     private val project: Project,
@@ -71,6 +83,8 @@ private class DuplicatesPanel(
 
     private val table: JBTable
     private val tableModel: DuplicatesTableModel
+    private val previewEditor: EditorEx
+    private var selectedDuplicate: DuplicateInfo? = null
 
     init {
         tableModel = DuplicatesTableModel(allDuplicates, currentDuplicate)
@@ -84,7 +98,18 @@ private class DuplicatesPanel(
             columnModel.getColumn(0).preferredWidth = 50  // #
             columnModel.getColumn(1).preferredWidth = 200 // File
             columnModel.getColumn(2).preferredWidth = 80  // Line
-            columnModel.getColumn(3).preferredWidth = 400 // Code Preview
+            columnModel.getColumn(3).preferredWidth = 100 // Lines
+
+            // Selection listener for preview
+            selectionModel.addListSelectionListener { e ->
+                if (!e.valueIsAdjusting) {
+                    val row = selectedRow
+                    if (row >= 0) {
+                        selectedDuplicate = allDuplicates[row]
+                        updatePreview()
+                    }
+                }
+            }
 
             // Double-click to navigate
             addMouseListener(object : MouseAdapter() {
@@ -99,17 +124,88 @@ private class DuplicatesPanel(
             })
         }
 
-        val scrollPane = JBScrollPane(table)
+        // Create editor for preview with Dart syntax highlighting
+        val editorFactory = EditorFactory.getInstance()
+        val document = editorFactory.createDocument("Select a duplicate to view full code...")
+        previewEditor = editorFactory.createEditor(document, project) as EditorEx
 
-        val headerPanel = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(8)
-            val label = JBLabel("Found ${allDuplicates.size} duplicate code fragments. Double-click to navigate.")
-            label.font = label.font.deriveFont(Font.BOLD)
-            add(label, BorderLayout.WEST)
+        // Configure preview editor
+        previewEditor.apply {
+            settings.isLineNumbersShown = true
+            settings.isLineMarkerAreaShown = false
+            settings.isFoldingOutlineShown = false
+            settings.isRightMarginShown = false
+            settings.isVirtualSpace = false
+            isViewer = true // Read-only
+
+            // Set Dart syntax highlighter
+            val highlighter = EditorHighlighterFactory.getInstance()
+                .createEditorHighlighter(project, DartFileType.INSTANCE)
+            setHighlighter(highlighter)
         }
 
+        val scrollPane = JBScrollPane(table)
+
+        // Split pane: table on left, preview editor on right
+        val splitter = JBSplitter(false, 0.5f).apply {
+            firstComponent = scrollPane
+            secondComponent = previewEditor.component
+        }
+
+        // Header with actions
+        val headerPanel = createHeaderPanel()
+
         add(headerPanel, BorderLayout.NORTH)
-        add(scrollPane, BorderLayout.CENTER)
+        add(splitter, BorderLayout.CENTER)
+
+        // Select current duplicate by default
+        val currentIndex = allDuplicates.indexOf(currentDuplicate)
+        if (currentIndex >= 0) {
+            table.setRowSelectionInterval(currentIndex, currentIndex)
+        }
+    }
+
+    private fun createHeaderPanel(): JPanel {
+        val panel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(8)
+        }
+
+        val label = JBLabel("Found ${allDuplicates.size} duplicate code fragments. Double-click to navigate.").apply {
+            font = font.deriveFont(Font.BOLD)
+        }
+
+        // Actions toolbar
+        val actionGroup = DefaultActionGroup().apply {
+            add(ShowDiffAction())
+            add(NavigateToSelectedAction())
+        }
+
+        val toolbar = ActionManager.getInstance()
+            .createActionToolbar("DartDuplicatesToolbar", actionGroup, true)
+        toolbar.targetComponent = this
+
+        panel.add(label, BorderLayout.WEST)
+        panel.add(toolbar.component, BorderLayout.EAST)
+
+        return panel
+    }
+
+    private fun updatePreview() {
+        val duplicate = selectedDuplicate ?: return
+
+        // Access PSI text within read action
+        val text = com.intellij.openapi.application.ReadAction.compute<String, Exception> {
+            duplicate.element.text
+        }
+
+        // Update preview editor with syntax highlighting
+        val document = previewEditor.document
+        com.intellij.openapi.application.ApplicationManager.getApplication().runWriteAction {
+            document.setText(text)
+        }
+
+        // Reset scroll position
+        previewEditor.scrollingModel.scrollVertically(0)
     }
 
     private fun navigateToDuplicate(row: Int) {
@@ -129,7 +225,52 @@ private class DuplicatesPanel(
                 duplicate.element.textRange.startOffset,
                 duplicate.element.textRange.endOffset
             )
+
+            // Lazily highlight just this duplicate
+            DuplicateHighlightManager.highlightDuplicate(editor, duplicate)
         }
+    }
+
+    private inner class ShowDiffAction : AnAction("Show Diff", "Compare selected duplicate with current", AllIcons.Actions.Diff) {
+        override fun actionPerformed(e: AnActionEvent) {
+            val selected = selectedDuplicate ?: return
+            if (selected == currentDuplicate) return
+
+            val contentFactory = DiffContentFactory.getInstance()
+            val content1 = contentFactory.create(project, currentDuplicate.element.text, currentDuplicate.file.fileType)
+            val content2 = contentFactory.create(project, selected.element.text, selected.file.fileType)
+
+            val request = SimpleDiffRequest(
+                "Duplicate Code Comparison",
+                content1,
+                content2,
+                "${currentDuplicate.file.name}:${currentDuplicate.lineNumber}",
+                "${selected.file.name}:${selected.lineNumber}"
+            )
+
+            DiffManager.getInstance().showDiff(project, request)
+        }
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabled = selectedDuplicate != null && selectedDuplicate != currentDuplicate
+        }
+
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+    }
+
+    private inner class NavigateToSelectedAction : AnAction("Navigate", "Navigate to selected duplicate", AllIcons.Actions.Forward) {
+        override fun actionPerformed(e: AnActionEvent) {
+            val row = table.selectedRow
+            if (row >= 0) {
+                navigateToDuplicate(row)
+            }
+        }
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabled = table.selectedRow >= 0
+        }
+
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
     }
 
     private class DuplicatesTableModel(
@@ -137,7 +278,7 @@ private class DuplicatesPanel(
         private val currentDuplicate: DuplicateInfo
     ) : AbstractTableModel() {
 
-        private val columnNames = arrayOf("#", "File", "Line", "Code Preview")
+        private val columnNames = arrayOf("#", "File", "Line", "Lines")
 
         override fun getRowCount(): Int = duplicates.size
         override fun getColumnCount(): Int = columnNames.size
@@ -149,18 +290,8 @@ private class DuplicatesPanel(
                 0 -> rowIndex + 1
                 1 -> duplicate.file.name
                 2 -> duplicate.lineNumber
-                3 -> getCodePreview(duplicate)
+                3 -> duplicate.lineCount
                 else -> ""
-            }
-        }
-
-        private fun getCodePreview(duplicate: DuplicateInfo): String {
-            val text = duplicate.element.text
-            val preview = text.lines().firstOrNull()?.trim() ?: text
-            return if (preview.length > 80) {
-                preview.take(77) + "..."
-            } else {
-                preview
             }
         }
     }
@@ -182,16 +313,17 @@ private class DuplicatesPanel(
             // Highlight the current duplicate row
             if (table != null && row < table.model.rowCount) {
                 val model = table.model as? DuplicatesTableModel
-                val duplicates = (0 until (model?.rowCount ?: 0)).map { r ->
-                    // We need to access duplicates list, so we'll check based on content
-                    val fileValue = model?.getValueAt(r, 1) as? String
-                    val lineValue = model?.getValueAt(r, 2) as? Int
-                    fileValue == currentDuplicate.file.name && lineValue == currentDuplicate.lineNumber
-                }
+                if (model != null) {
+                    val duplicates = (0 until model.rowCount).map { r ->
+                        val fileValue = model.getValueAt(r, 1) as? String
+                        val lineValue = model.getValueAt(r, 2) as? Int
+                        fileValue == currentDuplicate.file.name && lineValue == currentDuplicate.lineNumber
+                    }
 
-                if (row < duplicates.size && duplicates[row] && !isSelected) {
-                    background = JBUI.CurrentTheme.List.Selection.background(false)
-                    font = font.deriveFont(Font.BOLD)
+                    if (row < duplicates.size && duplicates[row] && !isSelected) {
+                        background = JBUI.CurrentTheme.List.Selection.background(false)
+                        font = font.deriveFont(Font.BOLD)
+                    }
                 }
             }
 

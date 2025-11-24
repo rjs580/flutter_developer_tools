@@ -1,4 +1,3 @@
-
 package dev.rutvik.flutter_developer_tools.dart.duplicates
 
 import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
@@ -7,9 +6,9 @@ import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.util.IntentionFamilyName
 import com.intellij.codeInspection.util.IntentionName
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicatesFinder.DuplicateInfo
-import java.util.function.Supplier
 
 /**
  * Quick fix that opens the Duplicates tool window showing all duplicate locations.
@@ -31,13 +30,18 @@ class ShowAllDuplicatesQuickFix(
     override fun getFamilyName(): String = "Show duplicate code fragments"
 
     override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
-        // Get or create the tool window
         val toolWindowManager = ToolWindowManager.getInstance(project)
-        val toolWindow = toolWindowManager.getToolWindow("Dart Duplicates")
-            ?: toolWindowManager.registerToolWindow("Dart Duplicates") {
+
+        // Register tool window dynamically if not already registered
+        var toolWindow = toolWindowManager.getToolWindow("Dart Duplicates")
+        if (toolWindow == null) {
+            toolWindow = toolWindowManager.registerToolWindow("Dart Duplicates") {
                 icon = com.intellij.icons.AllIcons.Toolwindows.ToolWindowFind
-                stripeTitle = Supplier { "Dart Duplicates" }
+                anchor = com.intellij.openapi.wm.ToolWindowAnchor.BOTTOM
+                canCloseContent = true
+                stripeTitle = java.util.function.Supplier { "Dart Duplicates" }
             }
+        }
 
         // Update the content with current duplicates
         DartDuplicatesToolWindowFactory.showDuplicates(
@@ -51,7 +55,6 @@ class ShowAllDuplicatesQuickFix(
         toolWindow.show()
     }
 
-    // Explicitly disable preview for UI actions
     override fun generatePreview(project: Project, previewDescriptor: ProblemDescriptor): IntentionPreviewInfo {
         return IntentionPreviewInfo.EMPTY
     }

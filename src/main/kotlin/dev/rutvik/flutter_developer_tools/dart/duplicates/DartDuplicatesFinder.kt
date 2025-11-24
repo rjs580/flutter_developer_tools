@@ -16,7 +16,8 @@ object DartDuplicatesFinder {
     data class DuplicateInfo(
         val element: PsiElement,
         val file: PsiFile,
-        val lineNumber: Int
+        val lineNumber: Int,
+        val lineCount: Int
     )
 
     // Minimum number of statements required to consider a block for duplicate detection
@@ -50,7 +51,8 @@ object DartDuplicatesFinder {
             val hash = generateStructuralHash(block)
             if (hash != null) {
                 val lineNumber = getLineNumber(block)
-                val duplicateInfo = DuplicateInfo(block, file, lineNumber)
+                val lineCount = getLineCount(block)
+                val duplicateInfo = DuplicateInfo(block, file, lineNumber, lineCount)
 
                 duplicateGroups.getOrPut(hash) { mutableListOf() }.add(duplicateInfo)
             }
@@ -68,11 +70,40 @@ object DartDuplicatesFinder {
     private fun findCodeBlocks(file: PsiFile): List<PsiElement> {
         val blocks = mutableListOf<PsiElement>()
 
-        // Find method bodies
-        PsiTreeUtil.findChildrenOfType(file, DartFunctionBody::class.java).forEach { body ->
-            blocks.add(body)
+        // Find method/function declarations (not just bodies)
+        // This captures the entire method including signature
+        PsiTreeUtil.findChildrenOfType(file, DartMethodDeclaration::class.java).forEach { method ->
+            blocks.add(method) // Add the whole method, not just body
+        }
 
-            // Also check statement blocks within the method
+        PsiTreeUtil.findChildrenOfType(file, DartFunctionDeclarationWithBody::class.java).forEach { func ->
+            blocks.add(func) // Add the whole function
+        }
+
+        PsiTreeUtil.findChildrenOfType(file, DartFunctionDeclarationWithBodyOrNative::class.java).forEach { func ->
+            blocks.add(func) // Add the whole function
+        }
+
+        // Find getter/setter declarations
+        PsiTreeUtil.findChildrenOfType(file, DartGetterDeclaration::class.java).forEach { getter ->
+            blocks.add(getter)
+        }
+
+        PsiTreeUtil.findChildrenOfType(file, DartSetterDeclaration::class.java).forEach { setter ->
+            blocks.add(setter)
+        }
+
+        // Find constructor declarations
+        PsiTreeUtil.findChildrenOfType(file, DartFactoryConstructorDeclaration::class.java).forEach { constructor ->
+            blocks.add(constructor)
+        }
+
+        PsiTreeUtil.findChildrenOfType(file, DartNamedConstructorDeclaration::class.java).forEach { constructor ->
+            blocks.add(constructor)
+        }
+
+        // Also check inner blocks for duplicated logic within methods
+        PsiTreeUtil.findChildrenOfType(file, DartFunctionBody::class.java).forEach { body ->
             PsiTreeUtil.findChildrenOfType(body, DartBlock::class.java).forEach { block ->
                 val statements = PsiTreeUtil.findChildrenOfType(block, DartStatements::class.java).firstOrNull()
                 if (statements != null) {
@@ -83,15 +114,6 @@ object DartDuplicatesFinder {
                     }
                 }
             }
-        }
-
-        // Find constructor bodies
-        PsiTreeUtil.findChildrenOfType(file, DartFactoryConstructorDeclaration::class.java).forEach {
-            it.functionBody?.let { body -> blocks.add(body) }
-        }
-
-        PsiTreeUtil.findChildrenOfType(file, DartNamedConstructorDeclaration::class.java).forEach {
-            it.functionBody?.let { body -> blocks.add(body) }
         }
 
         return blocks
@@ -108,12 +130,10 @@ object DartDuplicatesFinder {
 
         // Check line count (simple heuristic)
         val lineCount = getLineCount(element)
-        if (lineCount < MIN_LINES_OF_CODE) return false
+        return lineCount >= MIN_LINES_OF_CODE
 
         // Optionally: Check complexity (more sophisticated)
         // You could add a complexity score based on nesting depth, control flow, etc.
-
-        return true
     }
 
     /**
@@ -157,7 +177,7 @@ object DartDuplicatesFinder {
             val digest = MessageDigest.getInstance("MD5")
             val hashBytes = digest.digest(structure.toByteArray())
             hashBytes.joinToString("") { "%02x".format(it) }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
