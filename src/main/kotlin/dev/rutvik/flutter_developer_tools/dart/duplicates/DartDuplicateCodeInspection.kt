@@ -26,6 +26,12 @@ class DartDuplicateCodeInspection : LocalInspectionTool() {
         """.trimIndent()
     }
 
+    override fun isEnabledByDefault(): Boolean = true
+
+    override fun getDefaultLevel(): com.intellij.codeHighlighting.HighlightDisplayLevel {
+        return com.intellij.codeHighlighting.HighlightDisplayLevel.WARNING
+    }
+
     override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
         return object : PsiElementVisitor() {
             override fun visitFile(file: PsiFile) {

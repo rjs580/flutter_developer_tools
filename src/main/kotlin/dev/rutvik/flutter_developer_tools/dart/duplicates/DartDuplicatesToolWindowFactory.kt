@@ -15,6 +15,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.JBSplitter
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
@@ -32,6 +33,7 @@ import javax.swing.JTable
 import javax.swing.ListSelectionModel
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
+import javax.swing.table.TableCellRenderer
 
 class DartDuplicatesToolWindowFactory : ToolWindowFactory {
 
@@ -86,27 +88,42 @@ private class DuplicatesPanel(
     private val table: JBTable
     private val tableModel: DuplicatesTableModel
     private val previewEditor: EditorEx
+    private val showCheckboxes = allDuplicates.size > 2
 
     init {
-        tableModel = DuplicatesTableModel(allDuplicates, currentDuplicate)
+        tableModel = DuplicatesTableModel(allDuplicates, currentDuplicate, showCheckboxes)
         table = JBTable(tableModel).apply {
             setDefaultRenderer(String::class.java, DuplicateCellRenderer(currentDuplicate))
             rowHeight = 32
             showVerticalLines = false
             showHorizontalLines = true
 
-            // Enable multi-selection for comparing
-            if (allDuplicates.size > 2) {
-                selectionModel.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
-            } else {
-                selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
-            }
+            // Configure checkbox column if needed
+            if (showCheckboxes) {
+                columnModel.getColumn(0).apply {
+                    cellRenderer = CheckboxRenderer()
+                    preferredWidth = 40
+                    maxWidth = 40
+                }
 
-            // Column widths
-            columnModel.getColumn(0).preferredWidth = 50  // #
-            columnModel.getColumn(1).preferredWidth = 200 // File
-            columnModel.getColumn(2).preferredWidth = 80  // Line
-            columnModel.getColumn(3).preferredWidth = 100 // Lines
+                // Enable multi-selection
+                selectionModel.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
+
+                // Column widths with checkbox
+                columnModel.getColumn(1).preferredWidth = 50  // #
+                columnModel.getColumn(2).preferredWidth = 200 // File
+                columnModel.getColumn(3).preferredWidth = 80  // Line
+                columnModel.getColumn(4).preferredWidth = 100 // Lines
+            } else {
+                // Single selection for 2 duplicates
+                selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
+
+                // Column widths without checkbox
+                columnModel.getColumn(0).preferredWidth = 50  // #
+                columnModel.getColumn(1).preferredWidth = 200 // File
+                columnModel.getColumn(2).preferredWidth = 80  // Line
+                columnModel.getColumn(3).preferredWidth = 100 // Lines
+            }
 
             // Selection listener for preview
             selectionModel.addListSelectionListener { e ->
@@ -118,14 +135,29 @@ private class DuplicatesPanel(
                 }
             }
 
-            // Double-click to navigate
+            // Mouse listener for checkbox clicks and double-click navigation
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) {
-                    if (e.clickCount == 2) {
-                        val row = rowAtPoint(e.point)
-                        if (row >= 0) {
-                            navigateToDuplicate(row)
+                    val row = rowAtPoint(e.point)
+                    val col = columnAtPoint(e.point)
+
+                    if (row < 0) return
+
+                    // Handle checkbox click (only for 3+ duplicates)
+                    if (showCheckboxes && col == 0) {
+                        // Toggle selection on checkbox click
+                        if (isRowSelected(row)) {
+                            removeRowSelectionInterval(row, row)
+                        } else {
+                            addRowSelectionInterval(row, row)
                         }
+                        e.consume()
+                        return
+                    }
+
+                    // Handle double-click navigation
+                    if (e.clickCount == 2) {
+                        navigateToDuplicate(row)
                     }
                 }
             })
@@ -176,7 +208,7 @@ private class DuplicatesPanel(
         return if (allDuplicates.size == 2) {
             "Select a duplicate to view code, or click 'Show Diff' to compare both."
         } else {
-            "Select one duplicate to view code, or select exactly 2 duplicates to compare them."
+            "Select one duplicate to view code, or use checkboxes to select 2 duplicates to compare."
         }
     }
 
@@ -188,7 +220,7 @@ private class DuplicatesPanel(
         val labelText = if (allDuplicates.size == 2) {
             "Found ${allDuplicates.size} duplicate code fragments. Click 'Show Diff' to compare or double-click to navigate."
         } else {
-            "Found ${allDuplicates.size} duplicate code fragments. Select 2 items and click 'Show Diff' to compare."
+            "Found ${allDuplicates.size} duplicate code fragments. Check 2 items to compare or double-click to navigate."
         }
 
         val label = JBLabel(labelText).apply {
@@ -250,6 +282,30 @@ private class DuplicatesPanel(
         }
     }
 
+    private inner class CheckboxRenderer : TableCellRenderer {
+        private val checkBox = JBCheckBox()
+
+        override fun getTableCellRendererComponent(
+            table: JTable?,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            if (table != null) {
+                checkBox.isSelected = table.isRowSelected(row)
+                checkBox.background = if (isSelected) {
+                    table.selectionBackground
+                } else {
+                    table.background
+                }
+            }
+            checkBox.horizontalAlignment = JBCheckBox.CENTER
+            return checkBox
+        }
+    }
+
     private inner class ShowDiffAction : AnAction(
         "Show Diff",
         "Compare selected duplicates",
@@ -300,16 +356,16 @@ private class DuplicatesPanel(
                 e.presentation.isEnabled = isEnabled
 
                 if (selectedRows.isEmpty()) {
-                    e.presentation.description = "Select 2 duplicates to compare (hold Ctrl/Cmd to select multiple)"
+                    e.presentation.description = "Check 2 duplicates to compare"
                 } else if (selectedRows.size == 1) {
                     val selected = allDuplicates[selectedRows[0]]
-                    e.presentation.description = "Select 1 more duplicate to compare with ${selected.file.name}:${selected.lineNumber}"
+                    e.presentation.description = "Check 1 more duplicate to compare with ${selected.file.name}:${selected.lineNumber}"
                 } else if (selectedRows.size == 2) {
                     val first = allDuplicates[selectedRows[0]]
                     val second = allDuplicates[selectedRows[1]]
                     e.presentation.description = "Compare ${first.file.name}:${first.lineNumber} with ${second.file.name}:${second.lineNumber}"
                 } else {
-                    e.presentation.description = "Select exactly 2 duplicates to compare (${selectedRows.size} selected)"
+                    e.presentation.description = "Check exactly 2 duplicates to compare (${selectedRows.size} selected)"
                 }
             }
         }
@@ -348,10 +404,15 @@ private class DuplicatesPanel(
 
     private class DuplicatesTableModel(
         private val duplicates: List<DuplicateInfo>,
-        private val currentDuplicate: DuplicateInfo
+        private val currentDuplicate: DuplicateInfo,
+        private val showCheckboxes: Boolean
     ) : AbstractTableModel() {
 
-        private val columnNames = arrayOf("#", "File", "Line", "Lines")
+        private val columnNames = if (showCheckboxes) {
+            arrayOf("", "#", "File", "Line", "Lines")
+        } else {
+            arrayOf("#", "File", "Line", "Lines")
+        }
 
         override fun getRowCount(): Int = duplicates.size
         override fun getColumnCount(): Int = columnNames.size
@@ -359,12 +420,24 @@ private class DuplicatesPanel(
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
             val duplicate = duplicates[rowIndex]
-            return when (columnIndex) {
-                0 -> rowIndex + 1
-                1 -> duplicate.file.name
-                2 -> duplicate.lineNumber
-                3 -> duplicate.lineCount
-                else -> ""
+
+            return if (showCheckboxes) {
+                when (columnIndex) {
+                    0 -> false // Checkbox state (managed by selection)
+                    1 -> rowIndex + 1
+                    2 -> duplicate.file.name
+                    3 -> duplicate.lineNumber
+                    4 -> duplicate.lineCount
+                    else -> ""
+                }
+            } else {
+                when (columnIndex) {
+                    0 -> rowIndex + 1
+                    1 -> duplicate.file.name
+                    2 -> duplicate.lineNumber
+                    3 -> duplicate.lineCount
+                    else -> ""
+                }
             }
         }
     }
@@ -387,9 +460,13 @@ private class DuplicatesPanel(
             if (table != null && row < table.model.rowCount) {
                 val model = table.model as? DuplicatesTableModel
                 if (model != null) {
+                    // Determine column offset based on whether checkboxes are shown
+                    val fileColumn = if (model.columnCount == 5) 2 else 1
+                    val lineColumn = if (model.columnCount == 5) 3 else 2
+
                     val duplicates = (0 until model.rowCount).map { r ->
-                        val fileValue = model.getValueAt(r, 1) as? String
-                        val lineValue = model.getValueAt(r, 2) as? Int
+                        val fileValue = model.getValueAt(r, fileColumn) as? String
+                        val lineValue = model.getValueAt(r, lineColumn) as? Int
                         fileValue == currentDuplicate.file.name && lineValue == currentDuplicate.lineNumber
                     }
 
