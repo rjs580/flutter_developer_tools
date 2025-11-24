@@ -196,6 +196,21 @@
         <breadcrumbsInfoProvider
                 implementation="dev.rutvik.flutter_developer_tools.dart.breadcrumbs.DartBreadcrumbsProvider"/>
 
+        <!-- Duplicate Code Detection -->
+        <annotator
+                language="Dart"
+                implementationClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicateCodeAnnotator"/>
+
+        <localInspection
+                language="Dart"
+                shortName="DartDuplicateCode"
+                displayName="Duplicate code fragment"
+                groupName="Dart"
+                enabledByDefault="true"
+                level="WARNING"
+                hasStaticDescription="true"
+                implementationClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicateCodeInspection"/>
+
         <!-- Cache invalidators -->
         <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>
 
@@ -204,6 +219,12 @@
                     factoryClass="dev.rutvik.flutter_developer_tools.toolWindow.WidgetHeatmapToolWindowFactory"
                     anchor="right"
                     icon="AllIcons.Nodes.Library"/>
+
+        <toolWindow id="Dart Duplicates"
+                    factoryClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicatesToolWindowFactory"
+                    anchor="bottom"
+                    icon="AllIcons.Toolwindows.ToolWindowFind"
+                    canCloseContents="true"/>
 
         <!-- Settings -->
         <applicationService
