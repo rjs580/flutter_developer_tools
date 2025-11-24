@@ -52,7 +52,7 @@ class DartDuplicateCodeInspection : LocalInspectionTool() {
                             holder.registerProblem(
                                 duplicate.element,
                                 message,
-                                ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
+                                ProblemHighlightType.WARNING,
                                 *fixes
                             )
                         }

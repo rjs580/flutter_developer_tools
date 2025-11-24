@@ -1,3 +1,4 @@
+
 package dev.rutvik.flutter_developer_tools.dart.duplicates
 
 import com.intellij.diff.DiffContentFactory
@@ -28,6 +29,7 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.JPanel
 import javax.swing.JTable
+import javax.swing.ListSelectionModel
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 
@@ -84,7 +86,6 @@ private class DuplicatesPanel(
     private val table: JBTable
     private val tableModel: DuplicatesTableModel
     private val previewEditor: EditorEx
-    private var selectedDuplicate: DuplicateInfo? = null
 
     init {
         tableModel = DuplicatesTableModel(allDuplicates, currentDuplicate)
@@ -93,6 +94,13 @@ private class DuplicatesPanel(
             rowHeight = 32
             showVerticalLines = false
             showHorizontalLines = true
+
+            // Enable multi-selection for comparing
+            if (allDuplicates.size > 2) {
+                selectionModel.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
+            } else {
+                selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
+            }
 
             // Column widths
             columnModel.getColumn(0).preferredWidth = 50  // #
@@ -104,9 +112,8 @@ private class DuplicatesPanel(
             selectionModel.addListSelectionListener { e ->
                 if (!e.valueIsAdjusting) {
                     val row = selectedRow
-                    if (row >= 0) {
-                        selectedDuplicate = allDuplicates[row]
-                        updatePreview()
+                    if (row >= 0 && selectedRowCount == 1) {
+                        updatePreview(allDuplicates[row])
                     }
                 }
             }
@@ -126,7 +133,7 @@ private class DuplicatesPanel(
 
         // Create editor for preview with Dart syntax highlighting
         val editorFactory = EditorFactory.getInstance()
-        val document = editorFactory.createDocument("Select a duplicate to view full code...")
+        val document = editorFactory.createDocument(getInitialPreviewText())
         previewEditor = editorFactory.createEditor(document, project) as EditorEx
 
         // Configure preview editor
@@ -165,12 +172,26 @@ private class DuplicatesPanel(
         }
     }
 
+    private fun getInitialPreviewText(): String {
+        return if (allDuplicates.size == 2) {
+            "Select a duplicate to view code, or click 'Show Diff' to compare both."
+        } else {
+            "Select one duplicate to view code, or select exactly 2 duplicates to compare them."
+        }
+    }
+
     private fun createHeaderPanel(): JPanel {
         val panel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(8)
         }
 
-        val label = JBLabel("Found ${allDuplicates.size} duplicate code fragments. Double-click to navigate.").apply {
+        val labelText = if (allDuplicates.size == 2) {
+            "Found ${allDuplicates.size} duplicate code fragments. Click 'Show Diff' to compare or double-click to navigate."
+        } else {
+            "Found ${allDuplicates.size} duplicate code fragments. Select 2 items and click 'Show Diff' to compare."
+        }
+
+        val label = JBLabel(labelText).apply {
             font = font.deriveFont(Font.BOLD)
         }
 
@@ -190,9 +211,7 @@ private class DuplicatesPanel(
         return panel
     }
 
-    private fun updatePreview() {
-        val duplicate = selectedDuplicate ?: return
-
+    private fun updatePreview(duplicate: DuplicateInfo) {
         // Access PSI text within read action
         val text = com.intellij.openapi.application.ReadAction.compute<String, Exception> {
             duplicate.element.text
@@ -231,34 +250,78 @@ private class DuplicatesPanel(
         }
     }
 
-    private inner class ShowDiffAction : AnAction("Show Diff", "Compare selected duplicate with current", AllIcons.Actions.Diff) {
+    private inner class ShowDiffAction : AnAction(
+        "Show Diff",
+        "Compare selected duplicates",
+        AllIcons.Actions.Diff
+    ) {
         override fun actionPerformed(e: AnActionEvent) {
-            val selected = selectedDuplicate ?: return
-            if (selected == currentDuplicate) return
+            val selectedRows = table.selectedRows
+
+            val first: DuplicateInfo
+            val second: DuplicateInfo
+
+            if (allDuplicates.size == 2) {
+                // For 2 duplicates, always compare them
+                first = allDuplicates[0]
+                second = allDuplicates[1]
+            } else {
+                // For 3+, use the 2 selected items
+                if (selectedRows.size != 2) return
+                first = allDuplicates[selectedRows[0]]
+                second = allDuplicates[selectedRows[1]]
+            }
 
             val contentFactory = DiffContentFactory.getInstance()
-            val content1 = contentFactory.create(project, currentDuplicate.element.text, currentDuplicate.file.fileType)
-            val content2 = contentFactory.create(project, selected.element.text, selected.file.fileType)
+            val content1 = contentFactory.create(project, first.element.text, first.file.fileType)
+            val content2 = contentFactory.create(project, second.element.text, second.file.fileType)
 
             val request = SimpleDiffRequest(
                 "Duplicate Code Comparison",
                 content1,
                 content2,
-                "${currentDuplicate.file.name}:${currentDuplicate.lineNumber}",
-                "${selected.file.name}:${selected.lineNumber}"
+                "${first.file.name}:${first.lineNumber}",
+                "${second.file.name}:${second.lineNumber}"
             )
 
             DiffManager.getInstance().showDiff(project, request)
         }
 
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = selectedDuplicate != null && selectedDuplicate != currentDuplicate
+            val selectedRows = table.selectedRows
+
+            if (allDuplicates.size == 2) {
+                // Always enabled for 2 duplicates
+                e.presentation.isEnabled = true
+                e.presentation.description = "Compare the 2 duplicate code fragments"
+            } else {
+                // For 3+, require exactly 2 selections
+                val isEnabled = selectedRows.size == 2
+                e.presentation.isEnabled = isEnabled
+
+                if (selectedRows.isEmpty()) {
+                    e.presentation.description = "Select 2 duplicates to compare (hold Ctrl/Cmd to select multiple)"
+                } else if (selectedRows.size == 1) {
+                    val selected = allDuplicates[selectedRows[0]]
+                    e.presentation.description = "Select 1 more duplicate to compare with ${selected.file.name}:${selected.lineNumber}"
+                } else if (selectedRows.size == 2) {
+                    val first = allDuplicates[selectedRows[0]]
+                    val second = allDuplicates[selectedRows[1]]
+                    e.presentation.description = "Compare ${first.file.name}:${first.lineNumber} with ${second.file.name}:${second.lineNumber}"
+                } else {
+                    e.presentation.description = "Select exactly 2 duplicates to compare (${selectedRows.size} selected)"
+                }
+            }
         }
 
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
     }
 
-    private inner class NavigateToSelectedAction : AnAction("Navigate", "Navigate to selected duplicate", AllIcons.Actions.Forward) {
+    private inner class NavigateToSelectedAction : AnAction(
+        "Navigate",
+        "Navigate to selected duplicate",
+        AllIcons.Actions.Forward
+    ) {
         override fun actionPerformed(e: AnActionEvent) {
             val row = table.selectedRow
             if (row >= 0) {
@@ -267,7 +330,17 @@ private class DuplicatesPanel(
         }
 
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = table.selectedRow >= 0
+            val selectedRows = table.selectedRows
+            e.presentation.isEnabled = selectedRows.size == 1
+
+            if (selectedRows.isEmpty()) {
+                e.presentation.description = "Select a duplicate to navigate"
+            } else if (selectedRows.size == 1) {
+                val duplicate = allDuplicates[selectedRows[0]]
+                e.presentation.description = "Navigate to ${duplicate.file.name}:${duplicate.lineNumber}"
+            } else {
+                e.presentation.description = "Select only 1 duplicate to navigate"
+            }
         }
 
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
