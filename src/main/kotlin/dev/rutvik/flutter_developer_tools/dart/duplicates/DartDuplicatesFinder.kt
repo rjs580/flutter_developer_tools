@@ -63,9 +63,37 @@ object DartDuplicatesFinder {
         }
 
         // Filter out groups with less than 2 elements (no duplicates)
-        return duplicateGroups
+        val allDuplicates = duplicateGroups
             .filter { it.value.size > 1 }
             .mapKeys { it.value.first().element }
+
+        // Remove nested duplicates - keep only the outermost/largest ones
+        return filterNestedDuplicates(allDuplicates)
+    }
+
+    /**
+     * Filters out duplicate fragments that are contained within other larger duplicates.
+     * This ensures we report the largest/most meaningful duplicate, not nested fragments.
+     */
+    private fun filterNestedDuplicates(
+        duplicates: Map<PsiElement, List<DuplicateInfo>>
+    ): Map<PsiElement, List<DuplicateInfo>> {
+        val elementsToRemove = mutableSetOf<PsiElement>()
+
+        // For each duplicate, check if it's contained in another duplicate
+        duplicates.keys.forEach { element1 ->
+            duplicates.keys.forEach { element2 ->
+                if (element1 != element2) {
+                    // Check if element1 is a child of element2
+                    if (PsiTreeUtil.isAncestor(element2, element1, true)) {
+                        // element1 is nested inside element2, so remove the smaller one
+                        elementsToRemove.add(element1)
+                    }
+                }
+            }
+        }
+
+        return duplicates.filterKeys { it !in elementsToRemove }
     }
 
     /**
@@ -106,7 +134,8 @@ object DartDuplicatesFinder {
             blocks.add(constructor)
         }
 
-        // NEW: Find widget instantiations (CallExpressions that look like widgets)
+        // Find widget instantiations (CallExpressions that look like widgets)
+        // We collect ALL widget calls first, then filter nested ones later
         PsiTreeUtil.findChildrenOfType(file, DartCallExpression::class.java).forEach { callExpr ->
             if (isLikelyWidgetInstantiation(callExpr)) {
                 blocks.add(callExpr)
@@ -183,14 +212,14 @@ object DartDuplicatesFinder {
         if (element is DartCallExpression && isLikelyWidgetInstantiation(element)) {
             // Widgets need fewer tokens since they're more declarative
             val tokenCount = countSignificantTokens(element)
-            if (tokenCount < 20) return false // Lower threshold for widgets
+            if (tokenCount < 25) return false // Slightly higher threshold for widgets
 
             val lineCount = getLineCount(element)
-            if (lineCount < 5) return false // At least 5 lines for meaningful widget duplication
+            if (lineCount < 8) return false // At least 8 lines to avoid small fragments
 
             // Check that it has sufficient named arguments
             val namedArgCount = element.arguments?.argumentList?.namedArgumentList?.size ?: 0
-            return namedArgCount >= 3 // At least 3 named arguments
+            return namedArgCount >= 2 // At least 2 named arguments
         }
 
         // Original checks for other code types
