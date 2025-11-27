@@ -4,6 +4,9 @@
     <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
     <id>dev.rutvik.flutter_developer_tools.flutter_developer_tools</id>
 
+    <!-- Mark incompatibility with Flutter Enhancement Suite -->
+    <incompatible-with>de.mariushoefler.flutter_enhancement_suite</incompatible-with>
+
     <!-- Public plugin name should be written in Title Case.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
     <name>Flutter Developer Tools</name>

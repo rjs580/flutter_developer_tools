@@ -204,6 +204,22 @@ object DartDuplicatesFinder {
     }
 
     /**
+     * Checks if a widget has repeated callback patterns that suggest true duplication.
+     * Widgets with all unique callbacks/values are likely intentionally similar, not duplicates.
+     */
+    private fun hasRepeatedCallbackPatterns(element: DartCallExpression): Boolean {
+        val arguments = element.arguments?.argumentList ?: return false
+        val callbackArgs = arguments.namedArgumentList.filter { arg ->
+            val name = arg.parameterReferenceExpression?.text ?: ""
+            name.startsWith("on") || name == "value" || name == "controller"
+        }
+
+        // If all callback/value arguments are unique references, it's not a true duplicate
+        val uniqueValues = callbackArgs.mapNotNull { it.expression?.text }.toSet()
+        return uniqueValues.size < callbackArgs.size // Has repeated values
+    }
+
+    /**
      * Checks if a code block is a valid candidate for duplicate detection.
      * Uses multiple heuristics to avoid flagging trivial code.
      */
@@ -219,7 +235,13 @@ object DartDuplicatesFinder {
 
             // Check that it has sufficient named arguments
             val namedArgCount = element.arguments?.argumentList?.namedArgumentList?.size ?: 0
-            return namedArgCount >= 2 // At least 2 named arguments
+            if (namedArgCount < 3) return false // Increase to at least 3 named arguments
+
+            // Additional check: widgets with mostly different argument values aren't true duplicates
+            // Only flag if the widget has repeated callback patterns (like multiple identical onPressed)
+            if (!hasRepeatedCallbackPatterns(element)) return false
+
+            return true
         }
 
         // Original checks for other code types
@@ -409,7 +431,17 @@ object DartDuplicatesFinder {
                     is DartNamedArgument -> {
                         // Include parameter names to preserve widget structure
                         val paramName = element.parameterReferenceExpression?.text ?: "param"
-                        builder.append("ARG[$paramName]|")
+
+                        // For certain key arguments, include a hash of the value to distinguish
+                        // widgets that use the same structure but different data bindings
+                        val valueHash = if (paramName in setOf("onChanged", "onPressed", "onTap", "value", "controller", "key")) {
+                            // Include a simplified hash of the argument value
+                            val valueText = element.expression?.text?.take(50) ?: ""
+                            "_${valueText.hashCode().toString(16)}"
+                        } else {
+                            ""
+                        }
+                        builder.append("ARG[$paramName$valueHash]|")
                     }
                     is DartAssignExpression -> builder.append("ASSIGN|")
                     is DartAdditiveExpression -> builder.append("ADD|")
