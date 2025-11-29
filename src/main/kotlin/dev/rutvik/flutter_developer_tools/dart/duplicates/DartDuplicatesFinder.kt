@@ -33,8 +33,10 @@ object DartDuplicatesFinder {
     // Minimum lines of code (rough heuristic)
     private const val MIN_LINES_OF_CODE = 3
 
-    // Minimum complexity score to avoid trivial getters/setters
-    private const val MIN_COMPLEXITY_SCORE = 2
+    // Minimum complexity units to consider for duplicate detection
+    // Formula: 2 * statements + expressions (matches IntelliJ's approach)
+    // Default ~50 is a good balance for Dart
+    private const val MIN_COMPLEXITY_UNITS = 50
 
     /**
      * Finds all duplicate code fragments in the given file.
@@ -204,26 +206,22 @@ object DartDuplicatesFinder {
     }
 
     /**
-     * Checks if a widget has repeated callback patterns that suggest true duplication.
-     * Widgets with all unique callbacks/values are likely intentionally similar, not duplicates.
-     */
-    private fun hasRepeatedCallbackPatterns(element: DartCallExpression): Boolean {
-        val arguments = element.arguments?.argumentList ?: return false
-        val callbackArgs = arguments.namedArgumentList.filter { arg ->
-            val name = arg.parameterReferenceExpression?.text ?: ""
-            name.startsWith("on") || name == "value" || name == "controller"
-        }
-
-        // If all callback/value arguments are unique references, it's not a true duplicate
-        val uniqueValues = callbackArgs.mapNotNull { it.expression?.text }.toSet()
-        return uniqueValues.size < callbackArgs.size // Has repeated values
-    }
-
-    /**
      * Checks if a code block is a valid candidate for duplicate detection.
      * Uses multiple heuristics to avoid flagging trivial code.
      */
     private fun isValidDuplicateCandidate(element: PsiElement): Boolean {
+        // Skip named constructors that only define default parameters
+        // These are Dart patterns that cannot be refactored
+        if (element is DartNamedConstructorDeclaration) {
+            if (isDefaultParameterOnlyConstructor(element)) return false
+        }
+
+        // Skip factory constructors that only delegate to another constructor
+        // These are variant patterns like factory Theme.light() => const Theme(...)
+        if (element is DartFactoryConstructorDeclaration) {
+            if (isDelegatingFactoryConstructor(element)) return false
+        }
+
         // For widget call expressions, use different thresholds
         if (element is DartCallExpression && isLikelyWidgetInstantiation(element)) {
             // Widgets need fewer tokens since they're more declarative
@@ -239,20 +237,21 @@ object DartDuplicatesFinder {
 
             // Additional check: widgets with mostly different argument values aren't true duplicates
             // Only flag if the widget has repeated callback patterns (like multiple identical onPressed)
-            if (!hasRepeatedCallbackPatterns(element)) return false
+//            if (!hasRepeatedCallbackPatterns(element)) return false
 
             return true
         }
 
-        // Original checks for other code types
+        // Use IntelliJ-style complexity units as primary check
+        val complexityUnits = calculateComplexityUnits(element)
+        if (complexityUnits < MIN_COMPLEXITY_UNITS) return false
+
+        // Secondary check: ensure minimum code volume
         val tokenCount = countSignificantTokens(element)
         if (tokenCount < MIN_TOKEN_COUNT) return false
 
         val lineCount = getLineCount(element)
         if (lineCount < MIN_LINES_OF_CODE) return false
-
-        val complexity = calculateComplexity(element)
-        if (complexity < MIN_COMPLEXITY_SCORE) return false
 
         if (isTrivialAccessor(element)) return false
 
@@ -328,27 +327,112 @@ object DartDuplicatesFinder {
     }
 
     /**
-     * Calculates a complexity score based on nesting depth and control flow.
-     * Higher scores indicate more complex code that's worth flagging as duplicate.
+     * Checks if a named argument contains a lambda/function expression.
      */
-    private fun calculateComplexity(element: PsiElement): Int {
-        var score = 0
+    private fun containsLambdaExpression(element: DartNamedArgument): Boolean {
+        return PsiTreeUtil.findChildOfType(element, DartFunctionExpression::class.java) != null
+    }
 
-        // Count control flow structures (each adds complexity)
-        score += PsiTreeUtil.findChildrenOfType(element, DartIfStatement::class.java).size * 2
-        score += PsiTreeUtil.findChildrenOfType(element, DartForStatement::class.java).size * 2
-        score += PsiTreeUtil.findChildrenOfType(element, DartWhileStatement::class.java).size * 2
-        score += PsiTreeUtil.findChildrenOfType(element, DartSwitchStatement::class.java).size * 3
-        score += PsiTreeUtil.findChildrenOfType(element, DartTryStatement::class.java).size * 2
+    /**
+     * Checks if a named constructor only contains default parameter assignments.
+     * These are Dart patterns like Theme.light() / Theme.dark() that define
+     * default values for each variant and cannot be refactored.
+     */
+    private fun isDefaultParameterOnlyConstructor(element: DartNamedConstructorDeclaration): Boolean {
+        // Check if the constructor has a body with actual statements
+        val body = element.functionBody ?: return true
 
-        // Count method calls (each adds some complexity)
-        score += PsiTreeUtil.findChildrenOfType(element, DartCallExpression::class.java).size
+        // Check if body has any real statements (not just initializer list)
+        val block = PsiTreeUtil.findChildOfType(body, DartBlock::class.java) ?: return true
 
-        // Count logical operators (indicate conditional logic)
-        score += PsiTreeUtil.findChildrenOfType(element, DartLogicAndExpression::class.java).size
-        score += PsiTreeUtil.findChildrenOfType(element, DartLogicOrExpression::class.java).size
+        val statements = PsiTreeUtil.findChildOfType(block, DartStatements::class.java)
+        return statements == null || statements.textLength == 0
+    }
 
-        return score
+    /**
+     * Checks if a factory constructor only delegates to another constructor.
+     */
+    private fun isDelegatingFactoryConstructor(element: DartFactoryConstructorDeclaration): Boolean {
+        val body = element.functionBody ?: return false
+
+        // Check for arrow syntax (=>) with a single expression
+        // Arrow functions contain the expression directly without a block
+        val bodyText = body.text.trimStart()
+        if (!bodyText.startsWith("=>")) return false
+
+        // Check if the expression is a constructor call (starts with const/new or uppercase)
+        val expression = PsiTreeUtil.findChildOfType(body, DartCallExpression::class.java)
+            ?: PsiTreeUtil.findChildOfType(body, DartNewExpression::class.java)
+
+        return expression != null
+    }
+
+    /**
+     * Calculates complexity units using IntelliJ's formula: 2 * statements + expressions.
+     * This provides a consistent metric for determining if code is complex enough
+     * to be worth flagging as a duplicate.
+     */
+    private fun calculateComplexityUnits(element: PsiElement): Int {
+        val statementCount = countStatements(element)
+        val expressionCount = countExpressions(element)
+        return 2 * statementCount + expressionCount
+    }
+
+    /**
+     * Counts statements in the element.
+     */
+    private fun countStatements(element: PsiElement): Int {
+        var count = 0
+        element.accept(object : DartRecursiveVisitor() {
+            override fun visitElement(element: PsiElement) {
+                when (element) {
+                    is DartVarDeclarationList,
+                    is DartIfStatement,
+                    is DartForStatement,
+                    is DartWhileStatement,
+                    is DartDoWhileStatement,
+                    is DartSwitchStatement,
+                    is DartTryStatement,
+                    is DartReturnStatement,
+                    is DartBreakStatement,
+                    is DartContinueStatement,
+                    is DartAssertStatement -> count++
+                }
+                // Also count expression statements by checking parent relationship
+                // Expression statements in Dart are expressions that are direct children of DartStatements
+                if (element.parent is DartStatements && element is DartExpression) {
+                    count++
+                }
+                super.visitElement(element)
+            }
+        })
+        return count
+    }
+
+    /**
+     * Counts expressions in the element.
+     */
+    private fun countExpressions(element: PsiElement): Int {
+        var count = 0
+        element.accept(object : DartRecursiveVisitor() {
+            override fun visitElement(element: PsiElement) {
+                when (element) {
+                    is DartCallExpression,
+                    is DartNewExpression,
+                    is DartAssignExpression,
+                    is DartAdditiveExpression,
+                    is DartMultiplicativeExpression,
+                    is DartCompareExpression,
+                    is DartLogicAndExpression,
+                    is DartLogicOrExpression,
+                    is DartPrefixExpression,
+                    is DartTernaryExpression,
+                    is DartThrowExpression -> count++
+                }
+                super.visitElement(element)
+            }
+        })
+        return count
     }
 
     /**
@@ -425,16 +509,19 @@ object DartDuplicatesFinder {
                         if (widgetName.firstOrNull()?.isUpperCase() == true) {
                             builder.append("WIDGET[$widgetName]|")
                         } else {
-                            builder.append("CALL|")
+                            // Include method name to distinguish different method calls
+                            // This prevents false positives on similar delegation patterns
+                            builder.append("CALL[$widgetName]|")
                         }
                     }
                     is DartNamedArgument -> {
                         // Include parameter names to preserve widget structure
                         val paramName = element.parameterReferenceExpression?.text ?: "param"
 
-                        // For certain key arguments, include a hash of the value to distinguish
-                        // widgets that use the same structure but different data bindings
-                        val valueHash = if (paramName in setOf("onChanged", "onPressed", "onTap", "value", "controller", "key")) {
+                        // If the argument contains a lambda, don't hash the value here.
+                        // The lambda's content will be processed separately and any
+                        // duplicates within it will be detected naturally.
+                        val valueHash = if (!containsLambdaExpression(element)) {
                             // Include a simplified hash of the argument value
                             val valueText = element.expression?.text?.take(50) ?: ""
                             "_${valueText.hashCode().toString(16)}"
