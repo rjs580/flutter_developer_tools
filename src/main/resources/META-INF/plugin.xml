@@ -203,14 +203,24 @@
                 implementationClass="dev.rutvik.flutter_developer_tools.pubspec.hints.PubspecVersionInlayHintProvider"/>
 
         <!-- Dart Parameter Hints -->
-        <codeInsight.parameterNameHints
-                implementationClass="dev.rutvik.flutter_developer_tools.dart.hints.DartParameterHintsProvider"
-                language="Dart"/>
+        <codeInsight.declarativeInlayProvider
+                implementationClass="dev.rutvik.flutter_developer_tools.dart.hints.DartDeclarativeParameterHintsProvider"
+                providerId="dart.declarative.parameter.hints"
+                language="Dart"
+                group="PARAMETERS_GROUP"
+                isEnabledByDefault="true"
+                bundle="messages.FlutterToolsBundle"
+                nameKey="dart.parameter.hints.name"/>
 
         <!-- Dart Type Hints -->
-        <codeInsight.inlayProvider
-                implementationClass="dev.rutvik.flutter_developer_tools.dart.hints.DartTypeHintsProvider"
-                language="Dart"/>
+        <codeInsight.declarativeInlayProvider
+                implementationClass="dev.rutvik.flutter_developer_tools.dart.hints.DartDeclarativeTypeHintsProvider"
+                providerId="dart.declarative.type.hints"
+                language="Dart"
+                group="TYPES_GROUP"
+                isEnabledByDefault="true"
+                bundle="messages.FlutterToolsBundle"
+                nameKey="dart.type.hints.name"/>
 
         <!-- Dart Code Vision (Usage Lens) -->
         <codeInsight.daemonBoundCodeVisionProvider
