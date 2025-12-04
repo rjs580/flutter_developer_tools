@@ -67,6 +67,10 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
             element is DartMixinDeclaration -> true
             element is DartExtensionDeclaration -> true
 
+            // Top-level getters and setters
+            element is DartGetterDeclaration && element.parent is DartFile -> true
+            element is DartSetterDeclaration && element.parent is DartFile -> true
+
             // Top-level variables
             element is DartVarDeclarationList && element.parent is DartFile -> true
 
