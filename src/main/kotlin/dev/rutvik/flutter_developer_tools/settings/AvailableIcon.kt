@@ -232,7 +232,6 @@ object AvailableIcons {
             IconDefinition("Toolwindows.ToolWindowHierarchy", "Hierarchy", "Tool Windows", AllIcons.Toolwindows.ToolWindowHierarchy),
             IconDefinition("Toolwindows.ToolWindowFind", "Find", "Tool Windows", AllIcons.Toolwindows.ToolWindowFind),
             IconDefinition("Toolwindows.ToolWindowBuild", "Build", "Tool Windows", AllIcons.Toolwindows.ToolWindowBuild),
-            IconDefinition("Toolwindows.ToolWindowFavorites", "Favorites", "Tool Windows", AllIcons.Toolwindows.ToolWindowFavorites),
             IconDefinition("Toolwindows.ToolWindowProblems", "Problems", "Tool Windows", AllIcons.Toolwindows.ToolWindowProblems),
 
             // Vcs

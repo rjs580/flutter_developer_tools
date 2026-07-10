@@ -4,8 +4,8 @@ package dev.rutvik.flutter_developer_tools.buildRunner
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.ColoredProcessHandler
-import com.intellij.execution.process.ProcessAdapter
 import com.intellij.execution.process.ProcessEvent
+import com.intellij.execution.process.ProcessListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
@@ -126,7 +126,7 @@ class BuildRunnerCommands(
             activeWatchHandler = handler
 
             // Add listener to clean up when process terminates
-            handler.addProcessListener(object : ProcessAdapter() {
+            handler.addProcessListener(object : ProcessListener {
                 override fun processTerminated(event: ProcessEvent) {
                     if (activeWatchHandler == handler) {
                         activeWatchHandler = null
@@ -159,7 +159,7 @@ class BuildRunnerCommands(
             activeWatchHandler = handler
 
             // Add listener to clean up when process terminates
-            handler.addProcessListener(object : ProcessAdapter() {
+            handler.addProcessListener(object : ProcessListener {
                 override fun processTerminated(event: ProcessEvent) {
                     if (activeWatchHandler == handler) {
                         activeWatchHandler = null
@@ -214,7 +214,7 @@ class BuildRunnerCommands(
             activeWatchHandler = handler
 
             // Add listener to clean up when process terminates
-            handler.addProcessListener(object : ProcessAdapter() {
+            handler.addProcessListener(object : ProcessListener {
                 override fun processTerminated(event: ProcessEvent) {
                     if (activeWatchHandler == handler) {
                         activeWatchHandler = null
