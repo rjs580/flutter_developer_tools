@@ -5,6 +5,7 @@ import com.intellij.lang.Language
 import com.intellij.lang.documentation.DocumentationProvider
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.editor.richcopy.HtmlSyntaxInfoUtil
 import com.intellij.psi.PsiElement
 import com.intellij.ui.ColorUtil
@@ -176,6 +177,8 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
                 )
                 buffer.toString()
             }
+        } catch (e: ProcessCanceledException) {
+            throw e
         } catch (_: Exception) {
             // Fallback: return escaped code without highlighting
             escapeHtml(code)

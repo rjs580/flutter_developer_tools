@@ -22,6 +22,16 @@ import javax.swing.JComponent
  * This notification allows quick access to Flutter build_runner commands.
  */
 class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
+
+    companion object {
+        private val GENERATED_PART_REGEX = Regex("""part\s+['"][^'"]*\.(g|freezed)\.dart['"]""")
+        private val CODE_GEN_ANNOTATIONS = listOf(
+            "@JsonSerializable", "@freezed", "@Freezed", "@injectable", "@Injectable",
+            "@RestApi", "@HiveType", "@Entity", "@CopyWith", "@GenerateMocks",
+            "@embedded", "@Embedded", "@collection", "@Collection", "@DataClassName", "@DriftDatabase"
+        )
+    }
+
     /**
      * Checks if the file requires build_runner and Flutter SDK is available,
      * then provides a notification panel with build_runner actions.
@@ -38,9 +48,9 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
         val flutterSdk = FlutterSdk.getFlutterSdk(project) ?: return null
 
         // Handle build_runner related files
-        if (shouldShowBuildRunnerNotification(file)) {
+        if (shouldShowBuildRunnerNotification(project, file)) {
             return Function { _ ->
-                BuildRunnerActionsPanel(project, flutterSdk)
+                BuildRunnerActionsPanel(project, flutterSdk, file)
             }
         }
 
@@ -50,10 +60,10 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
     /**
      * Determines if build_runner notification should be shown for the given file.
      */
-    private fun shouldShowBuildRunnerNotification(file: VirtualFile): Boolean {
+    private fun shouldShowBuildRunnerNotification(project: Project, file: VirtualFile): Boolean {
         // Check for build.yaml file
         if (file.name == "build.yaml") {
-            return hasBuildRunnerInPubspec(file)
+            return hasBuildRunnerInPubspec(project, file)
         }
 
         // Only check .dart files
@@ -62,7 +72,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
         }
 
         // Check if build_runner is in dev_dependencies
-        if (!hasBuildRunnerInPubspec(file)) {
+        if (!hasBuildRunnerInPubspec(project, file)) {
             return false
         }
 
@@ -73,15 +83,12 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
     /**
      * Checks if the file's project has build_runner in dev_dependencies.
      */
-    private fun hasBuildRunnerInPubspec(file: VirtualFile): Boolean {
+    private fun hasBuildRunnerInPubspec(project: Project, file: VirtualFile): Boolean {
         val pubRoot = PubRoot.forFile(file) ?: return false
         val pubspecFile = pubRoot.pubspec
 
         try {
-            val psiManager = com.intellij.psi.PsiManager.getInstance(
-                com.intellij.openapi.project.ProjectLocator.getInstance().guessProjectForFile(file) ?: return false
-            )
-            val psiFile = psiManager.findFile(pubspecFile) ?: return false
+            val psiFile = com.intellij.psi.PsiManager.getInstance(project).findFile(pubspecFile) ?: return false
 
             if (psiFile !is org.jetbrains.yaml.psi.YAMLFile) return false
 
@@ -94,6 +101,8 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
 
             // Check if build_runner exists
             return devDependencies.getKeyValueByKey("build_runner") != null
+        } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
+            throw e
         } catch (_: Exception) {
             return false
         }
@@ -104,36 +113,18 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
      */
     private fun usesCodeGeneration(file: VirtualFile): Boolean {
         try {
-            val content = String(file.contentsToByteArray(), Charsets.UTF_8)
+            // Read the in-memory document instead of re-reading the file from disk on
+            // every notification pass.
+            val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
+            val content = document?.charsSequence ?: return false
 
-            // Check for part directives with .g.dart or .freezed.dart
-            val hasGeneratedPart = content.contains(Regex("""part\s+['"][^'"]*\.(g|freezed)\.dart['"]"""))
-
-            if (hasGeneratedPart) {
+            if (GENERATED_PART_REGEX.containsMatchIn(content)) {
                 return true
             }
 
-            // Check for common code generation annotations
-            val codeGenAnnotations = listOf(
-                "@JsonSerializable",
-                "@freezed",
-                "@Freezed",
-                "@injectable",
-                "@Injectable",
-                "@RestApi",
-                "@HiveType",
-                "@Entity",
-                "@CopyWith",
-                "@GenerateMocks",
-                "@embedded",
-                "@Embedded",
-                "@collection",
-                "@Collection",
-                "@DataClassName",
-                "@DriftDatabase"
-            )
-
-            return codeGenAnnotations.any { content.contains(it) }
+            return CODE_GEN_ANNOTATIONS.any { content.contains(it) }
+        } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
+            throw e
         } catch (_: Exception) {
             return false
         }
@@ -145,7 +136,8 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
      */
     private class BuildRunnerActionsPanel(
         private val project: Project,
-        private val flutterSdk: FlutterSdk
+        private val flutterSdk: FlutterSdk,
+        private val contextFile: VirtualFile
     ) : EditorNotificationPanel(UIUtils.getEditorNotificationBackgroundColor()) {
         private var moreLabel: com.intellij.ui.HyperlinkLabel? = null
 
@@ -243,7 +235,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          * Executes build_runner build command.
          */
         private fun runBuild() {
-            val runner = BuildRunnerCommands(project, flutterSdk)
+            val runner = BuildRunnerCommands(project, flutterSdk, contextFile)
             runner.runBuild()
         }
 
@@ -251,7 +243,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          * Executes build_runner build command without delete-conflicting-outputs.
          */
         private fun runBuildNoDelete() {
-            val runner = BuildRunnerCommands(project, flutterSdk)
+            val runner = BuildRunnerCommands(project, flutterSdk, contextFile)
             runner.runBuildNoDelete()
         }
 
@@ -259,7 +251,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          * Executes build_runner watch command.
          */
         private fun runWatch() {
-            val runner = BuildRunnerCommands(project, flutterSdk)
+            val runner = BuildRunnerCommands(project, flutterSdk, contextFile)
             runner.runWatch()
 
             // Refresh the panel to show Stop button
@@ -270,7 +262,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          * Executes build_runner watch command without delete-conflicting-outputs.
          */
         private fun runWatchNoDelete() {
-            val runner = BuildRunnerCommands(project, flutterSdk)
+            val runner = BuildRunnerCommands(project, flutterSdk, contextFile)
             runner.runWatchNoDelete()
 
             // Refresh the panel to show Stop button
@@ -281,7 +273,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          * Executes build_runner build with verbose output.
          */
         private fun runBuildVerbose() {
-            val runner = BuildRunnerCommands(project, flutterSdk)
+            val runner = BuildRunnerCommands(project, flutterSdk, contextFile)
             runner.runBuildVerbose()
         }
 
@@ -289,7 +281,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          * Executes build_runner watch with verbose output.
          */
         private fun runWatchVerbose() {
-            val runner = BuildRunnerCommands(project, flutterSdk)
+            val runner = BuildRunnerCommands(project, flutterSdk, contextFile)
             runner.runWatchVerbose()
 
             // Refresh the panel to show Stop button
@@ -300,7 +292,7 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
          * Executes build_runner clean command.
          */
         private fun runClean() {
-            val runner = BuildRunnerCommands(project, flutterSdk)
+            val runner = BuildRunnerCommands(project, flutterSdk, contextFile)
             runner.runClean()
         }
 

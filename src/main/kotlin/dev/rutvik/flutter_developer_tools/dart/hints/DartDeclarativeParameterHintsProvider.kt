@@ -5,10 +5,14 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.DumbService
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.psi.util.childrenOfType
 import com.jetbrains.lang.dart.ide.info.DartFunctionDescription
 import com.jetbrains.lang.dart.psi.*
 import com.jetbrains.lang.dart.util.DartResolveUtil
+
+private val PARAM_WHITESPACE_REGEX = Regex("\\s+")
+private val PARAM_IDENTIFIER_REGEX = Regex("[A-Za-z_$][A-Za-z0-9_$]*")
 
 class DartDeclarativeParameterHintsProvider : InlayHintsProvider {
 
@@ -76,14 +80,31 @@ class DartDeclarativeParameterHintsProvider : InlayHintsProvider {
                     }
                     else -> null
                 }
+            } catch (e: ProcessCanceledException) {
+                throw e
             } catch (_: Exception) {
                 null
             }
         }
 
         private fun String.extractParameterName(): String {
-            if (length == 1) return this
-            return split("(").first().replace(Regex("[^a-zA-Z\\s]"), "").split(" ").last()
+            // The rendered parameter text is one of:
+            //   "Type name", "Type name = default", "ReturnType Function(...) name"
+            //   (modern function-typed parameter), or "ReturnType name(...)" (old-style
+            //   function formal). Resolve the identifier that is actually the parameter name.
+            val text = substringBefore("=").trim()
+            if (text.contains('(')) {
+                // Modern function-typed parameter: the name follows the closing ')'.
+                text.substringAfterLast(')').lastIdentifierOrNull()?.let { return it }
+                // Old-style function formal: the name precedes the '('.
+                text.substringBefore('(').lastIdentifierOrNull()?.let { return it }
+            }
+            return text.lastIdentifierOrNull() ?: text
+        }
+
+        private fun String.lastIdentifierOrNull(): String? {
+            val lastToken = trim().split(PARAM_WHITESPACE_REGEX).lastOrNull()?.substringAfterLast('.') ?: return null
+            return PARAM_IDENTIFIER_REGEX.findAll(lastToken).lastOrNull()?.value
         }
     }
 }

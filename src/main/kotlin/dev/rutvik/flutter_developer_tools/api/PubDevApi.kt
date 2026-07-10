@@ -99,6 +99,8 @@ object PubDevApi {
                             callback(result)
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     log.warn("Failed to await existing request for $name", e)
                 }
@@ -189,6 +191,8 @@ object PubDevApi {
                         callback(result)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 log.warn("Failed to fetch details for $name", e)
             }

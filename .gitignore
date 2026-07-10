@@ -5,6 +5,9 @@ build/
 !**/src/test/**/build/
 .kotlin
 
+# IntelliJ Platform Gradle Plugin generated cache
+.intellijPlatform/
+
 ### IntelliJ IDEA ###
 .idea/*
 !.idea/copyright

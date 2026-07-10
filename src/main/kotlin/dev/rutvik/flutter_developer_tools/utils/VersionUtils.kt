@@ -5,6 +5,10 @@ package dev.rutvik.flutter_developer_tools.utils
  */
 object VersionUtils {
 
+    // Pattern: major.minor.patch[-prerelease][+build]
+    private val VERSION_REGEX =
+        Regex("""^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z\-.]+))?(?:\+([0-9A-Za-z\-.]+))?$""")
+
     data class SemanticVersion(
         val major: Int,
         val minor: Int,
@@ -49,9 +53,7 @@ object VersionUtils {
     fun parseVersion(versionStr: String): SemanticVersion? {
         val normalized = PubspecUtils.normalizeVersionString(versionStr)
 
-        // Pattern: major.minor.patch[-prerelease][+build]
-        val regex = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z\-.]+))?(?:\+([0-9A-Za-z\-.]+))?$""")
-        val match = regex.matchEntire(normalized) ?: return null
+        val match = VERSION_REGEX.matchEntire(normalized) ?: return null
 
         val (major, minor, patch) = match.destructured
         val preRelease = match.groups[4]?.value
@@ -79,11 +81,27 @@ object VersionUtils {
 
         if (currentVer >= latestVer) return UpdateType.NONE
 
+        // A change that crosses the pub caret boundary is breaking (shown as major). For
+        // 0.x versions the first non-zero segment is the breaking one, so 0.13.x -> 0.14.0
+        // is a breaking update. This also covers pre-release to stable (2.0.0-beta -> 2.0.0),
+        // which reports as a patch update rather than "no update".
         return when {
-            latestVer.major > currentVer.major -> UpdateType.MAJOR
+            isBreakingUpdate(currentVer, latestVer) -> UpdateType.MAJOR
             latestVer.minor > currentVer.minor -> UpdateType.MINOR
-            latestVer.patch > currentVer.patch -> UpdateType.PATCH
-            else -> UpdateType.NONE
+            else -> UpdateType.PATCH
+        }
+    }
+
+    /**
+     * Returns true when [latest] falls outside the caret-compatible range of [current],
+     * following pub's rules: for x.y.z with x > 0 the major segment is breaking; for 0.y.z
+     * the minor segment is breaking; for 0.0.z the patch segment is breaking.
+     */
+    private fun isBreakingUpdate(current: SemanticVersion, latest: SemanticVersion): Boolean {
+        return when {
+            current.major > 0 -> latest.major > current.major
+            current.minor > 0 -> latest.major > current.major || latest.minor > current.minor
+            else -> latest.major > current.major || latest.minor > current.minor || latest.patch > current.patch
         }
     }
 
@@ -93,14 +111,16 @@ object VersionUtils {
      */
     fun getSafeUpgradeVersion(current: String, availableVersions: List<String>): String? {
         val currentVer = parseVersion(current) ?: return null
+        val currentIsPreRelease = currentVer.preRelease != null
 
-        // Filter versions to only those that are:
-        // 1. Same major version
-        // 2. Greater than current version
+        // A safe upgrade is the highest version that stays inside the caret-compatible
+        // range (no breaking change) and, unless already on a pre-release, is stable.
         val safeVersions = availableVersions
             .mapNotNull { parseVersion(it)?.let { ver -> ver to it } }
             .filter { (ver, _) ->
-                ver.major == currentVer.major && ver > currentVer
+                ver > currentVer &&
+                    !isBreakingUpdate(currentVer, ver) &&
+                    (currentIsPreRelease || ver.preRelease == null)
             }
             .sortedByDescending { (ver, _) -> ver }
 

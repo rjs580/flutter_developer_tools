@@ -2,7 +2,7 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin require-restart="true">
     <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
-    <id>dev.rutvik.flutter_developer_tools.flutter_developer_tools</id>
+    <id>dev.rutvik.flutter_developer_tools</id>
 
     <!-- Mark incompatibility with Flutter Enhancement Suite -->
     <incompatible-with>de.mariushoefler.flutter_enhancement_suite</incompatible-with>
@@ -17,141 +17,53 @@
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
-        <h2>Complete Flutter & Dart Development Enhancement Suite</h2>
+        <h2>Flutter and Dart tools for everyday work</h2>
 
         <p>
-            Supercharge your Flutter and Dart development with intelligent pubspec.yaml management,
-            enhanced code documentation, advanced navigation tools, powerful visualization features, and code quality analysis—all seamlessly integrated into your IDE.
+            Small tools that make Flutter and Dart work faster: smarter pubspec.yaml editing,
+            package and code docs on hover, better navigation, and helpful inline hints.
         </p>
 
-        <h3>Key Features</h3>
-
-        <h4>🔍 Smart Package Management</h4>
+        <h3>Package management</h3>
         <ul>
-            <li>Auto-complete pub.dev packages with real-time search and Flutter Favorites (⭐) badge</li>
-            <li>Inline update notifications with safe upgrade options (skip major versions)</li>
-            <li>One-click upgrades with optional automatic <code>flutter pub get</code> execution</li>
-            <li>Health indicators for discontinued and Dart 3 incompatible packages</li>
+            <li>Auto-complete pub.dev packages as you type, with a Flutter Favorites badge</li>
+            <li>Inline update hints, with a safe upgrade option that skips major versions</li>
+            <li>One-click upgrade, with an option to run flutter pub get for you</li>
+            <li>Warnings for discontinued and Dart 3 incompatible packages</li>
         </ul>
 
-        <h4>📚 Rich Documentation Access</h4>
+        <h3>Documentation</h3>
         <ul>
-            <li><b>Pubspec.yaml</b>: Hover over packages for README or versions for CHANGELOG</li>
-            <li><b>Dart Code</b>: Enhanced documentation with syntax-highlighted code examples matching your IDE theme</li>
-            <li>Supports GitHub, GitLab, Bitbucket, Codeberg, and SourceHut repositories</li>
-            <li>Intelligent monorepo package handling</li>
+            <li>Hover a package to read its README, or a version to read its CHANGELOG</li>
+            <li>Dart docs with code samples highlighted to match your IDE theme</li>
+            <li>Works with GitHub, GitLab, Bitbucket, Codeberg, and SourceHut</li>
+            <li>Understands packages inside monorepos</li>
         </ul>
 
-        <h4>🧭 Enhanced Navigation</h4>
+        <h3>Navigation</h3>
         <ul>
-            <li><b>Quick Links</b>: CMD/CTRL+click package names to open pub.dev pages</li>
-            <li><b>Breadcrumbs</b>: Rich navigation bar with customizable icons and widgets showing classes, methods, functions, constructors, mixins, enums, and extensions</li>
-            <li><b>Code Lens</b>: Usage and implementation counts for code elements</li>
+            <li>Click a package name to open its pub.dev page</li>
+            <li>Breadcrumbs for classes, methods, functions, constructors, mixins, enums, and extensions, with custom icons</li>
+            <li>Code lens with usage and implementation counts</li>
         </ul>
 
-        <h4>💡 Intelligent Code Hints</h4>
+        <h3>Code hints</h3>
         <ul>
-            <li>Parameter name hints for non-named method arguments</li>
-            <li>Type hints for inferred variable types (var, final, const)</li>
-            <li>Configurable display options (before/after identifier)</li>
+            <li>Parameter names for positional arguments</li>
+            <li>Inferred types for var, final, and const</li>
+            <li>Options to control how hints are shown</li>
         </ul>
 
-        <h4>🔄 Duplicate Code Detection</h4>
+        <h3>Quick actions</h3>
         <ul>
-            <li><b>Smart Detection</b>: Identifies duplicate code fragments using AST-based structural analysis</li>
-            <li><b>Quick Navigation</b>: Cycle through all duplicates with "Navigate to next duplicate"</li>
-            <li><b>Visual Comparison</b>: Side-by-side diff view showing all duplicate locations</li>
-            <li><b>Persistent Highlighting</b>: Highlights remain visible until dismissed for easy comparison</li>
-        </ul>
-
-        <h4>📊 Visualization Tools</h4>
-        <ul>
-            <li><b>Widget Usage Heatmap</b>: Visual analysis of widget usage across your project with color-coded intensity indicators</li>
-            <li><b>Duplicate Code Browser</b>: Compare and navigate between duplicate code fragments</li>
-            <li>Support filtering, CSV export, and auto-refresh</li>
-        </ul>
-
-        <h4>⚡ Quick Actions</h4>
-        <ul>
-            <li>Run 'Flutter gen-l10n' directly from .arb files</li>
-            <li>Run 'build_runner build/watch' commands for code generation files</li>
+            <li>Run flutter gen-l10n from .arb files</li>
+            <li>Run build_runner build and watch from generated files</li>
         </ul>
 
         <p>
-            <b>Requirements:</b> IntelliJ IDEA 2025.1+ with Flutter and Dart plugins installed.
+            Requirements: IntelliJ IDEA 2025.2 or newer, with the Flutter and Dart plugins installed.
         </p>
     ]]></description>
-
-    <change-notes><![CDATA[
-        <h3>Version 1.0.0</h3>
-        <h4>Pubspec.yaml Intelligence</h4>
-        <ul>
-            <li><b>Smart Auto-completion</b>: Pub.dev package suggestions with popularity indicators</li>
-            <li><b>Package Documentation</b>: Hover for README and CHANGELOG with repository links</li>
-            <li><b>Update Management</b>: Inline hints with safe/full upgrade quick fixes</li>
-            <li><b>Health Warnings</b>: Visual badges for discontinued and incompatible packages</li>
-            <li><b>Quick Navigation</b>: Click-through to pub.dev package and version pages</li>
-        </ul>
-
-        <h4>Dart Code Enhancement</h4>
-        <ul>
-            <li><b>Syntax-Highlighted Documentation</b>: Code examples in hover docs respect your IDE color scheme</li>
-            <li><b>Enhanced Breadcrumbs</b>: Configurable navigation bar with custom icons and widgets for classes, methods, constructors, mixins, enums, extensions, getters, and setters</li>
-            <li><b>Parameter Hints</b>: Show parameter names for non-named arguments</li>
-            <li><b>Type Hints</b>: Display inferred types for variables and parameters</li>
-            <li><b>Code Lens</b>: Usage counts and implementation counts for code elements</li>
-        </ul>
-
-        <h4>Code Quality Tools</h4>
-        <ul>
-            <li><b>Duplicate Code Detection</b>: AST-based duplicate detection with intelligent filtering
-                <ul>
-                    <li>Identifies structurally similar code regardless of variable names</li>
-                    <li>Navigate between duplicates with persistent highlighting</li>
-                    <li>Side-by-side comparison view with diff visualization</li>
-                    <li>Quick fixes to show all duplicates or navigate to next</li>
-                </ul>
-            </li>
-        </ul>
-
-        <h4>Visualization Tools</h4>
-        <ul>
-            <li><b>Widget Usage Heatmap Tool Window</b>: Analyze widget usage patterns across your Flutter project
-                <ul>
-                    <li>Visual heatmap with color-coded intensity (green to red)</li>
-                    <li>Sortable table showing usage count, file count, and inheritance info</li>
-                    <li>Filter by custom widgets or high-usage widgets (>10 references)</li>
-                    <li>Export to CSV for further analysis</li>
-                    <li>Double-click navigation to widget definitions</li>
-                    <li>Manual refresh with last updated timestamp</li>
-                    <li>Helps identify refactoring candidates and reusable components</li>
-                </ul>
-            </li>
-            <li><b>Duplicate Code Browser</b>: Interactive tool window for comparing duplicates
-                <ul>
-                    <li>Full code preview with syntax highlighting</li>
-                    <li>Side-by-side diff view</li>
-                    <li>Navigate to any duplicate with single click</li>
-                    <li>Shows file location and line numbers</li>
-                </ul>
-            </li>
-        </ul>
-
-        <h4>Quick Actions</h4>
-        <ul>
-            <li>Run 'Flutter gen-l10n' directly from .arb files</li>
-            <li>Run build_runner commands (build/watch/clean) for code generation files</li>
-        </ul>
-
-        <h4>Additional Features</h4>
-        <ul>
-            <li>Multi-repository support (GitHub, GitLab, Bitbucket, Codeberg, SourceHut)</li>
-            <li>Monorepo-aware package documentation fetching</li>
-            <li>Configurable hint display options</li>
-            <li>Cache management for optimal performance</li>
-            <li>Full light and dark theme support for all visualization tools</li>
-        </ul>
-    ]]></change-notes>
 
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
@@ -238,25 +150,8 @@
         <breadcrumbsInfoProvider
                 implementation="dev.rutvik.flutter_developer_tools.dart.breadcrumbs.DartBreadcrumbsProvider"/>
 
-        <!-- Duplicate Code Detection -->
-        <localInspection
-                language="Dart"
-                shortName="DartDuplicateCode"
-                displayName="Duplicate code fragment"
-                groupName="Dart"
-                enabledByDefault="true"
-                level="WARNING"
-                hasStaticDescription="true"
-                implementationClass="dev.rutvik.flutter_developer_tools.dart.duplicates.DartDuplicateCodeInspection"/>
-
         <!-- Cache invalidators -->
         <cachesInvalidator implementation="dev.rutvik.flutter_developer_tools.startup.PubCacheInvalidator"/>
-
-        <!-- Tool Windows -->
-        <toolWindow id="Flutter Widget Heatmap"
-                    factoryClass="dev.rutvik.flutter_developer_tools.toolWindow.WidgetHeatmapToolWindowFactory"
-                    anchor="right"
-                    icon="AllIcons.Nodes.Library"/>
 
         <!-- Settings -->
         <applicationService

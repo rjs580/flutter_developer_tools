@@ -5,8 +5,12 @@ import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.ColoredProcessHandler
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.VirtualFile
 import io.flutter.FlutterMessages
 import io.flutter.console.FlutterConsoles
+import io.flutter.pub.PubRoot
 import io.flutter.sdk.FlutterSdk
 import java.nio.charset.StandardCharsets
 
@@ -22,7 +26,8 @@ import java.nio.charset.StandardCharsets
  */
 class FlutterGenL10nRunner(
     private val project: Project,
-    private val flutterSdk: FlutterSdk
+    private val flutterSdk: FlutterSdk,
+    private val contextFile: VirtualFile? = null
 ) {
 
     /**
@@ -66,15 +71,33 @@ class FlutterGenL10nRunner(
      * @throws ExecutionException if the project base path cannot be determined
      */
     private fun createGeneralCommandLine(): GeneralCommandLine {
-        val projectBasePath = project.basePath ?: throw ExecutionException("Cannot determine project base path")
-
         val line = GeneralCommandLine()
         line.charset = StandardCharsets.UTF_8
-        line.exePath = flutterSdk.homePath + "/bin/flutter"
-        line.setWorkDirectory(projectBasePath)
+        line.exePath = resolveFlutterExecutable()
+        line.setWorkDirectory(resolveWorkingDirectory())
         line.addParameter("--no-color")
         line.addParameter("gen-l10n")
 
         return line
+    }
+
+    /**
+     * Resolves the Flutter executable, honoring the OS-specific launcher name
+     * (flutter.bat on Windows, flutter elsewhere). GeneralCommandLine does not
+     * append the extension itself.
+     */
+    private fun resolveFlutterExecutable(): String {
+        val executable = if (SystemInfo.isWindows) "flutter.bat" else "flutter"
+        return FileUtil.toSystemDependentName("${flutterSdk.homePath}/bin/$executable")
+    }
+
+    /**
+     * Resolves the working directory to the pub root of the triggering file when available,
+     * so the command runs in the correct package (important for monorepos), falling back to
+     * the project base path.
+     */
+    private fun resolveWorkingDirectory(): String {
+        val pubRootPath = contextFile?.let { PubRoot.forFile(it)?.root?.path }
+        return pubRootPath ?: project.basePath ?: throw ExecutionException("Cannot determine working directory")
     }
 }

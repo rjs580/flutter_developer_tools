@@ -50,11 +50,8 @@ class SafeUpgradeQuickFix(
         val targetVersion = VersionUtils.getSafeUpgradeVersion(currentVersion, packageInfo.versions ?: emptyList())
             ?: return IntentionPreviewInfo.EMPTY
 
-        val newText = "^$targetVersion"
-
-        // Create a copy and perform the change to show in preview
-        val yamlScalarCopy = yamlScalar.copy() as YAMLScalar
-        yamlScalarCopy.updateText(newText)
+        // Modify the scalar inside the preview file copy so the diff is actually shown.
+        yamlScalar.updateText("^$targetVersion")
 
         return IntentionPreviewInfo.DIFF
     }
@@ -112,11 +109,8 @@ class FullUpgradeQuickFix(
         val element = file.findElementAt(offset) ?: return IntentionPreviewInfo.EMPTY
         val yamlScalar = PsiTreeUtil.getParentOfType(element, YAMLScalar::class.java) ?: return IntentionPreviewInfo.EMPTY
 
-        val newText = "^$latestVersion"
-
-        // Create a copy and perform the change to show in preview
-        val yamlScalarCopy = yamlScalar.copy() as YAMLScalar
-        yamlScalarCopy.updateText(newText)
+        // Modify the scalar inside the preview file copy so the diff is actually shown.
+        yamlScalar.updateText("^$latestVersion")
 
         return IntentionPreviewInfo.DIFF
     }

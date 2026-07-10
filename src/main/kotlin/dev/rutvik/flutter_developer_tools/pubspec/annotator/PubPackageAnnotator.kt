@@ -25,22 +25,7 @@ class PubPackageAnnotator : Annotator {
         if (holder.isBatchMode || !PubspecUtils.isPubspecFile(element.containingFile)) return
 
         when (element) {
-            is YAMLKeyValue -> annotatePackageName(element, holder)
             is YAMLScalar -> annotateVersionNumber(element, holder)
-        }
-    }
-
-    private fun annotatePackageName(yamlKv: YAMLKeyValue, holder: AnnotationHolder) {
-        if (!PubspecUtils.isInDependencySection(yamlKv)) return
-
-        val pkgName = yamlKv.keyText
-        if (!pkgName.isPubPackageName()) return
-        if (!PubspecUtils.isPubDevPackage(yamlKv)) return
-
-        yamlKv.key?.let { keyElement ->
-            holder.newAnnotation(HighlightSeverity.INFORMATION, "")
-                .range(keyElement)
-                .create()
         }
     }
 
@@ -76,9 +61,6 @@ class PubPackageAnnotator : Annotator {
 
         // Only annotate if there's an update available
         if (updateType == VersionUtils.UpdateType.NONE) {
-            holder.newAnnotation(HighlightSeverity.INFORMATION, "")
-                .range(yamlScalar)
-                .create()
             return
         }
 

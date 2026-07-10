@@ -18,10 +18,14 @@ repositories {
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     implementation("com.google.code.gson:gson:2.13.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    // NOTE: kotlinx-coroutines is intentionally NOT declared here. The IntelliJ Platform
+    // bundles a patched coroutines fork; bundling our own copy causes classloader conflicts.
+    // See https://plugins.jetbrains.com/docs/intellij/kotlin-coroutines.html
+
+    testImplementation("junit:junit:4.13.2")
 
     intellijPlatform {
-        create("IC", "2025.1.4.1")
+        create("IC", "2025.2.3")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add necessary plugin dependencies for compilation here, example:
@@ -35,79 +39,47 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "251"
+            sinceBuild = "252"
+            // untilBuild intentionally left unset for open-ended forward compatibility.
+            // The effective ceiling is governed by the Dart and io.flutter plugin dependencies.
         }
 
         changeNotes = """
-         <h3>Version 1.0.0</h3>
-        <h4>Pubspec.yaml Intelligence</h4>
+        <h3>1.0.0</h3>
+        <p>First release.</p>
+        <h4>Package management</h4>
         <ul>
-            <li><b>Smart Auto-completion</b>: Pub.dev package suggestions with popularity indicators</li>
-            <li><b>Package Documentation</b>: Hover for README and CHANGELOG with repository links</li>
-            <li><b>Update Management</b>: Inline hints with safe/full upgrade quick fixes</li>
-            <li><b>Health Warnings</b>: Visual badges for discontinued and incompatible packages</li>
-            <li><b>Quick Navigation</b>: Click-through to pub.dev package and version pages</li>
+            <li>Pub.dev auto-complete with popularity info</li>
+            <li>README and CHANGELOG on hover, with repository links</li>
+            <li>Inline update hints, with safe and full upgrade fixes</li>
+            <li>Warnings for discontinued and incompatible packages</li>
+            <li>Click through to pub.dev package and version pages</li>
         </ul>
-
-        <h4>Dart Code Enhancement</h4>
+        <h4>Dart code</h4>
         <ul>
-            <li><b>Syntax-Highlighted Documentation</b>: Code examples in hover docs respect your IDE color scheme</li>
-            <li><b>Enhanced Breadcrumbs</b>: Configurable navigation bar with custom icons and widgets for classes, methods, constructors, mixins, enums, extensions, getters, and setters</li>
-            <li><b>Parameter Hints</b>: Show parameter names for non-named arguments</li>
-            <li><b>Type Hints</b>: Display inferred types for variables and parameters</li>
-            <li><b>Code Lens</b>: Usage counts and implementation counts for code elements</li>
+            <li>Doc code samples highlighted to match your IDE theme</li>
+            <li>Breadcrumbs with custom icons for classes, methods, and more</li>
+            <li>Parameter name hints for positional arguments</li>
+            <li>Inferred type hints for variables and parameters</li>
+            <li>Code lens with usage and implementation counts</li>
         </ul>
-
-        <h4>Code Quality Tools</h4>
+        <h4>Quick actions</h4>
         <ul>
-            <li><b>Duplicate Code Detection</b>: AST-based duplicate detection with intelligent filtering
-                <ul>
-                    <li>Identifies structurally similar code regardless of variable names</li>
-                    <li>Navigate between duplicates with persistent highlighting</li>
-                    <li>Side-by-side comparison view with diff visualization</li>
-                    <li>Quick fixes to show all duplicates or navigate to next</li>
-                </ul>
-            </li>
-        </ul>
-
-        <h4>Visualization Tools</h4>
-        <ul>
-            <li><b>Widget Usage Heatmap Tool Window</b>: Analyze widget usage patterns across your Flutter project
-                <ul>
-                    <li>Visual heatmap with color-coded intensity (green to red)</li>
-                    <li>Sortable table showing usage count, file count, and inheritance info</li>
-                    <li>Filter by custom widgets or high-usage widgets (>10 references)</li>
-                    <li>Export to CSV for further analysis</li>
-                    <li>Double-click navigation to widget definitions</li>
-                    <li>Manual refresh with last updated timestamp</li>
-                    <li>Helps identify refactoring candidates and reusable components</li>
-                </ul>
-            </li>
-            <li><b>Duplicate Code Browser</b>: Interactive tool window for comparing duplicates
-                <ul>
-                    <li>Full code preview with syntax highlighting</li>
-                    <li>Side-by-side diff view</li>
-                    <li>Navigate to any duplicate with single click</li>
-                    <li>Shows file location and line numbers</li>
-                </ul>
-            </li>
-        </ul>
-
-        <h4>Quick Actions</h4>
-        <ul>
-            <li>Run 'Flutter gen-l10n' directly from .arb files</li>
-            <li>Run build_runner commands (build/watch/clean) for code generation files</li>
-        </ul>
-
-        <h4>Additional Features</h4>
-        <ul>
-            <li>Multi-repository support (GitHub, GitLab, Bitbucket, Codeberg, SourceHut)</li>
-            <li>Monorepo-aware package documentation fetching</li>
-            <li>Configurable hint display options</li>
-            <li>Cache management for optimal performance</li>
-            <li>Full light and dark theme support for all visualization tools</li>
+            <li>Run flutter gen-l10n from .arb files</li>
+            <li>Run build_runner build, watch, and clean from generated files</li>
         </ul>
         """.trimIndent()
+    }
+
+    // No signing/publishing tasks are configured: the plugin is uploaded manually through the
+    // JetBrains Marketplace web UI, which signs it for distribution. Author signing is optional
+    // and can be added later if desired (https://plugins.jetbrains.com/docs/intellij/plugin-signing.html).
+
+    // Run the IntelliJ Plugin Verifier against the IDEs recommended for our compatibility range.
+    pluginVerification {
+        ides {
+            recommended()
+        }
     }
 
     buildSearchableOptions = false

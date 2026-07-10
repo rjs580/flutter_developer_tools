@@ -2,6 +2,7 @@ package dev.rutvik.flutter_developer_tools.dart.hints
 
 import com.intellij.codeInsight.hints.declarative.*
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.DumbService
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -68,14 +69,16 @@ class DartDeclarativeTypeHintsProvider : InlayHintsProvider {
         }
 
         private fun getTypeFromAnalyzer(identifier: DartComponentName): String? {
-            if (file.virtualFile == null) return null
+            val virtualFile = file.virtualFile ?: return null
 
             val das = DartAnalysisServerService.getInstance(file.project)
             if (!das.isServerProcessActive) return null
 
             return try {
-                das.analysis_getHover(file.virtualFile, identifier.textOffset)
+                das.analysis_getHover(virtualFile, identifier.textOffset)
                     .firstOrNull()?.staticType
+            } catch (e: ProcessCanceledException) {
+                throw e
             } catch (_: Exception) {
                 null
             }

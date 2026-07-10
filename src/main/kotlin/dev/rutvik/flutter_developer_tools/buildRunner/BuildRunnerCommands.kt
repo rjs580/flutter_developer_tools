@@ -7,8 +7,12 @@ import com.intellij.execution.process.ColoredProcessHandler
 import com.intellij.execution.process.ProcessAdapter
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.VirtualFile
 import io.flutter.FlutterMessages
 import io.flutter.console.FlutterConsoles
+import io.flutter.pub.PubRoot
 import io.flutter.sdk.FlutterSdk
 import java.nio.charset.StandardCharsets
 
@@ -24,7 +28,8 @@ import java.nio.charset.StandardCharsets
  */
 class BuildRunnerCommands(
     private val project: Project,
-    private val flutterSdk: FlutterSdk
+    private val flutterSdk: FlutterSdk,
+    private val contextFile: VirtualFile? = null
 ) {
     companion object {
         // Store the currently running watch process handler
@@ -278,17 +283,34 @@ class BuildRunnerCommands(
      * @throws ExecutionException if the project base path cannot be determined
      */
     private fun createGeneralCommandLine(command: String, vararg additionalArgs: String): GeneralCommandLine {
-        val projectBasePath = project.basePath ?: throw ExecutionException("Cannot determine project base path")
-
         val line = GeneralCommandLine()
         line.charset = StandardCharsets.UTF_8
-        line.exePath = flutterSdk.homePath + "/bin/dart"
-        line.setWorkDirectory(projectBasePath)
+        line.exePath = resolveDartExecutable()
+        line.setWorkDirectory(resolveWorkingDirectory())
         line.addParameter("run")
         line.addParameter("build_runner")
         line.addParameter(command)
         additionalArgs.forEach { line.addParameter(it) }
 
         return line
+    }
+
+    /**
+     * Resolves the Dart executable, honoring the OS-specific launcher name
+     * (dart.bat on Windows, dart elsewhere). GeneralCommandLine does not append
+     * the extension itself.
+     */
+    private fun resolveDartExecutable(): String {
+        val executable = if (SystemInfo.isWindows) "dart.bat" else "dart"
+        return FileUtil.toSystemDependentName("${flutterSdk.homePath}/bin/$executable")
+    }
+
+    /**
+     * Resolves the working directory to the pub root of the triggering file when available
+     * (so build_runner runs in the correct package in a monorepo), falling back to the project base path.
+     */
+    private fun resolveWorkingDirectory(): String {
+        val pubRootPath = contextFile?.let { PubRoot.forFile(it)?.root?.path }
+        return pubRootPath ?: project.basePath ?: throw ExecutionException("Cannot determine working directory")
     }
 }

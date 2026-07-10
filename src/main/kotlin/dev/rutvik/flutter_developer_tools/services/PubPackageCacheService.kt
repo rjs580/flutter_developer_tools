@@ -30,9 +30,6 @@ class PubPackageCacheService : PersistentStateComponent<PackageCacheState> {
     @Volatile
     private var isMemoryCacheLoaded = false
 
-    @Volatile
-    private var pendingSave = false
-
     private val saveLock = Any()
 
     val lastPackageListUpdate: String
@@ -136,36 +133,35 @@ class PubPackageCacheService : PersistentStateComponent<PackageCacheState> {
     fun updatePackageListTimestamp() {
         synchronized(saveLock) {
             _state.lastPackageListUpdate = Instant.now().epochSecond
-            saveToDisk()
         }
     }
 
     /** Adds new package names to both persistent and memory cache */
     fun addPackageNames(names: List<String>) {
         synchronized(saveLock) {
-            var changed = false
-            names.forEach { name ->
-                // Always update persistent state
-                val existsInState = _state.packages.any { it.name == name }
-                if (!existsInState) {
-                    _state.packages += PubPackage.withName(name)
-                    changed = true
-                }
-
-                // Update memory cache only if loaded
-                if (isMemoryCacheLoaded && !memoryCache.containsKey(name)) {
-                    memoryCache[name] = PubPackage.withName(name)
+            // Build an O(1) lookup of existing names once, then collect only the new
+            // packages and assign the list a single time. Avoids the O(n^2) rebuild that
+            // froze startup when seeding the full pub.dev name list.
+            val existingNames = _state.packages.mapTo(HashSet()) { it.name }
+            val newPackages = ArrayList<PubPackage>()
+            for (name in names) {
+                if (existingNames.add(name)) {
+                    val pkg = PubPackage.withName(name)
+                    newPackages.add(pkg)
+                    if (isMemoryCacheLoaded) {
+                        memoryCache.putIfAbsent(name, pkg)
+                    }
                 }
             }
-            if (changed) {
-                saveToDisk()
+            if (newPackages.isNotEmpty()) {
+                _state.packages = _state.packages + newPackages
             }
         }
     }
 
     /** Checks if package details need to be refetched based on TTL */
     fun shouldRefetchDetails(packageName: String): Boolean {
-        val ts = _state.packageDetailsTimestamps[packageName] ?: return true
+        val ts = synchronized(saveLock) { _state.packageDetailsTimestamps[packageName] } ?: return true
 
         val now = Instant.now().epochSecond
         return (now - ts) > PACKAGE_DETAILS_TTL_SECONDS
@@ -191,9 +187,8 @@ class PubPackageCacheService : PersistentStateComponent<PackageCacheState> {
 
             _state.packageDetailsTimestamps[info.name] = Instant.now().epochSecond
         }
-
-        // Save to disk asynchronously and debounced (don't block)
-        scheduleDebouncedSave()
+        // The platform persists this PersistentStateComponent automatically; no explicit
+        // (and previously EDT-blocking) saveSettings() call is needed here.
     }
 
     /** Retrieves package info from cache */
@@ -241,26 +236,6 @@ class PubPackageCacheService : PersistentStateComponent<PackageCacheState> {
             _state.packageDetailsTimestamps.clear()
             memoryCache.clear()
             isMemoryCacheLoaded = false
-            saveToDisk()
-        }
-    }
-
-    /** Schedules a debounced save to avoid saving on every detail update */
-    private fun scheduleDebouncedSave() {
-        if (pendingSave) return
-
-        pendingSave = true
-        ApplicationManager.getApplication().executeOnPooledThread {
-            Thread.sleep(2000) // Wait 2 seconds to batch multiple updates
-            pendingSave = false
-            saveToDisk()
-        }
-    }
-
-    /** Persists current state to disk */
-    private fun saveToDisk() {
-        ApplicationManager.getApplication().invokeLater {
-            ApplicationManager.getApplication().saveSettings()
         }
     }
 }

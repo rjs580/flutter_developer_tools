@@ -13,6 +13,37 @@ import java.net.URI
 object RepositoryMarkdownFetcher {
     private val log = Logger.getInstance(RepositoryMarkdownFetcher::class.java)
 
+    private const val CACHE_TTL_MILLIS = 60L * 60L * 1000L // 1 hour for successful fetches
+    private const val NEGATIVE_CACHE_TTL_MILLIS = 5L * 60L * 1000L // 5 minutes for misses/failures
+    private const val MAX_MARKDOWN_BYTES = 2 * 1024 * 1024 // 2 MB safety cap for untrusted content
+
+    private data class CacheEntry(val content: String?, val timestampMillis: Long)
+
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, CacheEntry>()
+
+    /**
+     * Wraps a fetch with a short-lived cache keyed by (kind, repository, package). Misses are
+     * cached too, so a repository that has no such file is not re-scanned (hundreds of
+     * requests) on every hover; misses use a shorter TTL so a transient network failure does
+     * not hide a README for long.
+     */
+    private fun cachedFetch(
+        kind: String,
+        repositoryUrl: String,
+        packageName: String?,
+        fetch: () -> String?
+    ): String? {
+        val key = "$kind|$repositoryUrl|${packageName ?: ""}"
+        val now = System.currentTimeMillis()
+        cache[key]?.let {
+            val ttl = if (it.content != null) CACHE_TTL_MILLIS else NEGATIVE_CACHE_TTL_MILLIS
+            if (now - it.timestampMillis < ttl) return it.content
+        }
+        val content = fetch()
+        cache[key] = CacheEntry(content, now)
+        return content
+    }
+
     /**
      * Fetches README.md from a repository URL.
      * Automatically detects the repository type and constructs the appropriate raw file URL.
@@ -20,7 +51,10 @@ object RepositoryMarkdownFetcher {
      * @param repositoryUrl The repository URL
      * @param packageName Optional package name to search for in common monorepo locations
      */
-    fun fetchReadme(repositoryUrl: String, packageName: String? = null): String? {
+    fun fetchReadme(repositoryUrl: String, packageName: String? = null): String? =
+        cachedFetch("readme", repositoryUrl, packageName) { fetchReadmeUncached(repositoryUrl, packageName) }
+
+    private fun fetchReadmeUncached(repositoryUrl: String, packageName: String?): String? {
         // Try multiple README variants
         val readmeVariants = listOf(
             "README.md",
@@ -49,7 +83,10 @@ object RepositoryMarkdownFetcher {
      * @param repositoryUrl The repository URL
      * @param packageName Optional package name to search for in common monorepo locations
      */
-    fun fetchChangelog(repositoryUrl: String, packageName: String? = null): String? {
+    fun fetchChangelog(repositoryUrl: String, packageName: String? = null): String? =
+        cachedFetch("changelog", repositoryUrl, packageName) { fetchChangelogUncached(repositoryUrl, packageName) }
+
+    private fun fetchChangelogUncached(repositoryUrl: String, packageName: String?): String? {
         // Try multiple changelog variants
         val changelogVariants = listOf(
             "CHANGELOG.md",
@@ -316,7 +353,11 @@ object RepositoryMarkdownFetcher {
                 val content = HttpRequests.request(url)
                     .connectTimeout(5000)
                     .readTimeout(10000)
-                    .connect { it.readString() }
+                    .connect { request ->
+                        // Cap the read so a malicious or oversized file cannot exhaust memory.
+                        val bytes = request.inputStream.readNBytes(MAX_MARKDOWN_BYTES)
+                        String(bytes, Charsets.UTF_8)
+                    }
 
                 if (content.isNotBlank()) {
                     log.debug("Successfully fetched from: $url")

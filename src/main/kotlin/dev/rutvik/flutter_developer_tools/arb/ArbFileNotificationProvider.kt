@@ -38,7 +38,7 @@ class ArbFileNotificationProvider : EditorNotificationProvider {
         val flutterSdk = FlutterSdk.getFlutterSdk(project) ?: return null
 
         return Function { fileEditor ->
-            FlutterArbActionsPanel(project, flutterSdk)
+            FlutterArbActionsPanel(project, flutterSdk, file)
         }
     }
 
@@ -48,7 +48,8 @@ class ArbFileNotificationProvider : EditorNotificationProvider {
      */
     private class FlutterArbActionsPanel(
         private val project: Project,
-        private val flutterSdk: FlutterSdk
+        private val flutterSdk: FlutterSdk,
+        private val contextFile: VirtualFile
     ) : EditorNotificationPanel(UIUtils.getEditorNotificationBackgroundColor()) {
         init {
             icon(FlutterIcons.Flutter)
@@ -65,7 +66,7 @@ class ArbFileNotificationProvider : EditorNotificationProvider {
          * Executes the Flutter gen-l10n command to generate localizations from .arb files.
          */
         private fun runGenL10n() {
-            val runner = FlutterGenL10nRunner(project, flutterSdk)
+            val runner = FlutterGenL10nRunner(project, flutterSdk, contextFile)
             runner.runGenL10n()
         }
     }
