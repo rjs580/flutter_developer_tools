@@ -76,9 +76,8 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Application Services -->
-        <applicationService
-                serviceImplementation="dev.rutvik.flutter_developer_tools.services.PubPackageCacheService"/>
+        <!-- "Report on GitHub" in the IDE Internal Errors dialog -->
+        <errorHandler implementation="dev.rutvik.flutter_developer_tools.diagnostics.GitHubErrorReportSubmitter"/>
 
         <!-- ARB File Notification Provider -->
         <editorNotificationProvider

@@ -3,13 +3,15 @@ package dev.rutvik.flutter_developer_tools.dart.documentation
 
 import com.intellij.lang.Language
 import com.intellij.lang.documentation.DocumentationProvider
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.editor.richcopy.HtmlSyntaxInfoUtil
+import com.intellij.openapi.util.Computable
 import com.intellij.psi.PsiElement
 import com.intellij.ui.ColorUtil
 import com.jetbrains.lang.dart.DartLanguage
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 import org.jetbrains.yaml.YAMLLanguage
 
 /**
@@ -21,7 +23,18 @@ import org.jetbrains.yaml.YAMLLanguage
  */
 class DartEnhancedDocumentationProvider : DocumentationProvider {
 
-    override fun generateDoc(element: PsiElement?, originalElement: PsiElement?): String? {
+    private companion object {
+        const val FEATURE = "Dart enhanced documentation"
+    }
+
+    // Registered order="first": returning null on failure lets the platform fall back to Dart's own provider.
+    override fun generateDoc(element: PsiElement?, originalElement: PsiElement?): String? =
+        guardExtension(FEATURE, null) { computeDoc(element, originalElement) }
+
+    override fun getQuickNavigateInfo(element: PsiElement?, originalElement: PsiElement?): String? =
+        guardExtension(FEATURE, null) { computeQuickNavigateInfo(element, originalElement) }
+
+    private fun computeDoc(element: PsiElement?, originalElement: PsiElement?): String? {
         element ?: return null
 
         // Get the standard Dart documentation
@@ -32,7 +45,7 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
         return enhanceDocumentationWithSyntaxHighlighting(originalDoc, element)
     }
 
-    override fun getQuickNavigateInfo(element: PsiElement?, originalElement: PsiElement?): String? {
+    private fun computeQuickNavigateInfo(element: PsiElement?, originalElement: PsiElement?): String? {
         val dartDocProvider = com.jetbrains.lang.dart.ide.documentation.DartDocumentationProvider()
         return dartDocProvider.getQuickNavigateInfo(element, originalElement)
     }
@@ -166,7 +179,7 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
             val buffer = StringBuilder()
 
             // Use ReadAction to safely access PSI and perform highlighting
-            ReadAction.compute<String, Exception> {
+            ApplicationManager.getApplication().runReadAction(Computable {
                 HtmlSyntaxInfoUtil.appendHighlightedByLexerAndEncodedAsHtmlCodeSnippet(
                     buffer,
                     project,
@@ -176,7 +189,7 @@ class DartEnhancedDocumentationProvider : DocumentationProvider {
                     1.0f   // saturationFactor - 1.0f means use colors as-is from the theme
                 )
                 buffer.toString()
-            }
+            })
         } catch (e: ProcessCanceledException) {
             throw e
         } catch (_: Exception) {

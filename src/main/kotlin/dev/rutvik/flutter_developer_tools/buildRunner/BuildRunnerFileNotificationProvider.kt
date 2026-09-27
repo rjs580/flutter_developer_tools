@@ -12,6 +12,7 @@ import icons.FlutterIcons
 import io.flutter.pub.PubRoot
 import io.flutter.sdk.FlutterSdk
 import io.flutter.utils.UIUtils
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 import java.awt.Point
 import java.util.function.Function
 import javax.swing.JComponent
@@ -44,17 +45,18 @@ class BuildRunnerFileNotificationProvider : EditorNotificationProvider {
         project: Project,
         file: VirtualFile
     ): Function<in FileEditor, out JComponent?>? {
-        // Check if Flutter SDK is available
-        val flutterSdk = FlutterSdk.getFlutterSdk(project) ?: return null
+        return guardExtension("build_runner notification", null) {
+            // Cheap name check first: this provider is consulted for every file opened in any editor
+            if (file.extension != "dart" && file.name != "build.yaml") return null
 
-        // Handle build_runner related files
-        if (shouldShowBuildRunnerNotification(project, file)) {
-            return Function { _ ->
-                BuildRunnerActionsPanel(project, flutterSdk, file)
-            }
+            // Check if Flutter SDK is available
+            val flutterSdk = FlutterSdk.getFlutterSdk(project) ?: return null
+
+            // Handle build_runner related files
+            if (!shouldShowBuildRunnerNotification(project, file)) return null
+
+            Function { _ -> guardExtension("build_runner notification", null) { BuildRunnerActionsPanel(project, flutterSdk, file) } }
         }
-
-        return null
     }
 
     /**

@@ -13,6 +13,7 @@ import com.jetbrains.lang.dart.psi.*
 import dev.rutvik.flutter_developer_tools.settings.BreadcrumbsSettingsState
 import dev.rutvik.flutter_developer_tools.settings.AvailableIcons
 import dev.rutvik.flutter_developer_tools.settings.DefaultWidgetIconMappings
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 import javax.swing.Icon
 
 /**
@@ -29,12 +30,29 @@ import javax.swing.Icon
  * - Widget instantiations (for Flutter widget tree navigation)
  */
 class DartBreadcrumbsProvider : BreadcrumbsProvider {
+    private companion object {
+        const val FEATURE = "Dart breadcrumbs"
+    }
+
     private val settings: BreadcrumbsSettingsState
         get() = BreadcrumbsSettingsState.getInstance()
 
     override fun getLanguages(): Array<Language> = arrayOf(DartLanguage.INSTANCE)
 
-    override fun acceptElement(e: PsiElement): Boolean = when (e) {
+    // Breadcrumbs also back sticky lines, which are computed inside the highlighting pass.
+    override fun acceptElement(e: PsiElement): Boolean =
+        guardExtension(FEATURE, false) { isBreadcrumbElement(e) }
+
+    override fun getElementInfo(e: PsiElement): String =
+        guardExtension(FEATURE, "") { computeElementInfo(e) }
+
+    override fun getElementIcon(element: PsiElement): Icon? =
+        guardExtension(FEATURE, null) { computeElementIcon(element) }
+
+    override fun getElementTooltip(element: PsiElement): String =
+        guardExtension(FEATURE, "") { computeElementTooltip(element) }
+
+    private fun isBreadcrumbElement(e: PsiElement): Boolean = when (e) {
         // Classes and class-like structures
         is DartClassDefinition,
         is DartMixinDeclaration,
@@ -63,7 +81,7 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
         else -> false
     }
 
-    override fun getElementInfo(e: PsiElement): String = when (e) {
+    private fun computeElementInfo(e: PsiElement): String = when (e) {
         // Classes
         is DartClassDefinition -> buildClassInfo(e)
         is DartMixinDeclaration -> "mixin ${e.name}"
@@ -94,7 +112,7 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
         else -> e.text.take(50)
     }
 
-    override fun getElementIcon(element: PsiElement): Icon? {
+    private fun computeElementIcon(element: PsiElement): Icon? {
         return when (element) {
             is DartClassDefinition -> {
                 when {
@@ -184,7 +202,7 @@ class DartBreadcrumbsProvider : BreadcrumbsProvider {
         return widgetName
     }
 
-    override fun getElementTooltip(element: PsiElement): String {
+    private fun computeElementTooltip(element: PsiElement): String {
         val description = ElementDescriptionUtil.getElementDescription(
             element,
             RefactoringDescriptionLocation.WITH_PARENT

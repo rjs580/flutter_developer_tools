@@ -5,18 +5,19 @@ import com.intellij.lang.documentation.DocumentationMarkup
 import com.intellij.openapi.editor.Editor
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.util.concurrency.AppExecutorUtil
 import dev.rutvik.flutter_developer_tools.api.PubDevApi
 import dev.rutvik.flutter_developer_tools.api.RepositoryMarkdownFetcher
 import dev.rutvik.flutter_developer_tools.models.PubPackage
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils
 import dev.rutvik.flutter_developer_tools.utils.PubspecUtils.isPubPackageName
+import dev.rutvik.flutter_developer_tools.utils.awaitCancellably
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 
 /**
  * Provides hover documentation for pub.dev packages in pubspec.yaml files.
@@ -25,6 +26,11 @@ import java.util.concurrent.TimeUnit
  * - Shows CHANGELOG.md when hovering over version numbers
  */
 class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
+
+    private companion object {
+        // README/CHANGELOG discovery may probe several repository URLs before giving up.
+        const val MARKDOWN_TIMEOUT_MS = 30_000L
+    }
 
     private val markdownFlavour = GFMFlavourDescriptor()
 
@@ -98,15 +104,11 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
             return buildBasicPackageDoc(pkgName, pkgInfo)
         }
 
-        val readmeFuture = CompletableFuture.supplyAsync {
+        // App pool rather than the JVM-wide common pool; the wait is cancellable because generateDoc holds a read action.
+        val readmeFuture = CompletableFuture.supplyAsync({
             RepositoryMarkdownFetcher.fetchReadme(repoUrl, pkgName)
-        }
-
-        val readme = try {
-            readmeFuture.get(30, TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            null
-        }
+        }, AppExecutorUtil.getAppExecutorService())
+        val readme = awaitCancellably(readmeFuture, MARKDOWN_TIMEOUT_MS)
 
         return buildPackageDocWithReadme(pkgName, pkgInfo, readme, repoUrl)
     }
@@ -144,15 +146,11 @@ class PubPackageDocumentationProvider : AbstractDocumentationProvider() {
             return buildBasicVersionDoc(pkgName, normalizedVersion)
         }
 
-        val changelogFuture = CompletableFuture.supplyAsync {
+        // App pool rather than the JVM-wide common pool; the wait is cancellable because generateDoc holds a read action.
+        val changelogFuture = CompletableFuture.supplyAsync({
             RepositoryMarkdownFetcher.fetchChangelog(repoUrl, pkgName)
-        }
-
-        val changelog = try {
-            changelogFuture.get(30, TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            null
-        }
+        }, AppExecutorUtil.getAppExecutorService())
+        val changelog = awaitCancellably(changelogFuture, MARKDOWN_TIMEOUT_MS)
 
         return buildVersionDocWithChangelog(pkgName, normalizedVersion, changelog, repoUrl)
     }

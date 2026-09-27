@@ -18,6 +18,7 @@ import com.jetbrains.lang.dart.ide.actions.DartInheritorsSearcher
 import com.jetbrains.lang.dart.psi.*
 import com.jetbrains.lang.dart.test.DartTestSourcesFilter
 import com.jetbrains.lang.dart.util.DartResolveUtil
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 import java.awt.event.MouseEvent
 
 /**
@@ -33,7 +34,16 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
 
     override fun acceptsFile(file: PsiFile): Boolean = file is DartFile
 
-    override fun acceptsElement(element: PsiElement): Boolean {
+    override fun acceptsElement(element: PsiElement): Boolean =
+        guardExtension(ID, false) { isInheritorsTarget(element) }
+
+    override fun getHint(element: PsiElement, file: PsiFile): String? =
+        guardExtension(ID, null) { computeHint(element, file) }
+
+    override fun handleClick(editor: Editor, element: PsiElement, event: MouseEvent?) =
+        guardExtension(ID, Unit) { showImplementations(editor, element, event) }
+
+    private fun isInheritorsTarget(element: PsiElement): Boolean {
         if (!element.manager.isInProject(element)) return false
 
         return when {
@@ -43,7 +53,7 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
         }
     }
 
-    override fun getHint(element: PsiElement, file: PsiFile): String? {
+    private fun computeHint(element: PsiElement, file: PsiFile): String? {
         ProgressManager.checkCanceled()
 
         if (DumbService.isDumb(element.project)) {
@@ -105,7 +115,7 @@ class DartInheritorsCodeVisionProvider : InheritorsCodeVisionProvider() {
         }
     }
 
-    override fun handleClick(editor: Editor, element: PsiElement, event: MouseEvent?) {
+    private fun showImplementations(editor: Editor, element: PsiElement, event: MouseEvent?) {
         if (event == null || element !is DartComponent) return
 
         val anchor = element.componentName ?: return

@@ -6,10 +6,10 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.util.io.HttpRequests
 import dev.rutvik.flutter_developer_tools.models.PubPackage
 import dev.rutvik.flutter_developer_tools.services.PubPackageCacheService
+import dev.rutvik.flutter_developer_tools.utils.awaitCancellably
 import kotlinx.coroutines.*
-import java.util.concurrent.CompletableFuture
+import kotlinx.coroutines.future.asCompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 
 
 /**
@@ -21,6 +21,9 @@ import java.util.concurrent.TimeUnit
  */
 object PubDevApi {
     private val log = Logger.getInstance(PubDevApi::class.java)
+
+    // Both HTTP requests use 5s connect / 10s read timeouts, so a healthy fetch finishes well within this.
+    private const val PACKAGE_INFO_TIMEOUT_MS = 15_000L
 
     // Coroutine scope for managing background operations
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -60,18 +63,13 @@ object PubDevApi {
             return cachedInfo
         }
 
-        val future = CompletableFuture<PubPackage>()
+        // Callers hold a read action (documentation popup), so complete straight from the IO coroutine on
+        // success and failure alike, rather than via an EDT callback, and stay cancellable while waiting.
+        val future = scope.async { detailsRequest(name).await() }.asCompletableFuture()
+        val info = awaitCancellably(future, PACKAGE_INFO_TIMEOUT_MS) ?: return cache.getInfo(name)
 
-        requestDetailsIfNeeded(name) { info ->
-            cache.updateDetails(info)
-            future.complete(info)
-        }
-
-        return try {
-            future.get(30, TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            cache.getInfo(name)
-        }
+        ApplicationManager.getApplication().invokeLater { cache.updateDetails(info) }
+        return info
     }
 
     fun requestDetailsIfNeeded(name: String, callback: (PubPackage) -> Unit) {
@@ -87,25 +85,31 @@ object PubDevApi {
     }
 
     private fun fetchDetails(name: String, callback: (PubPackage) -> Unit) {
-        // Check if request is already in-flight
+        val request = detailsRequest(name)
+
+        // Launch coroutine to handle result
+        scope.launch {
+            try {
+                val result = request.await()
+                if (result != null) {
+                    ApplicationManager.getApplication().invokeLater {
+                        callback(result)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("Failed to fetch details for $name", e)
+            }
+        }
+    }
+
+    /** Returns the in-flight details request for [name], starting one if none is active. */
+    private fun detailsRequest(name: String): Deferred<PubPackage?> {
+        // Attach to an in-flight request instead of fetching twice
         val existingRequest = inFlightRequests[name]
         if (existingRequest != null && existingRequest.isActive) {
-            // Attach to existing request
-            scope.launch {
-                try {
-                    val result = existingRequest.await()
-                    if (result != null) {
-                        ApplicationManager.getApplication().invokeLater {
-                            callback(result)
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    log.warn("Failed to await existing request for $name", e)
-                }
-            }
-            return
+            return existingRequest
         }
 
         // Create new deferred request
@@ -181,21 +185,6 @@ object PubDevApi {
         }
 
         inFlightRequests[name] = deferred
-
-        // Launch coroutine to handle result
-        scope.launch {
-            try {
-                val result = deferred.await()
-                if (result != null) {
-                    ApplicationManager.getApplication().invokeLater {
-                        callback(result)
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                log.warn("Failed to fetch details for $name", e)
-            }
-        }
+        return deferred
     }
 }

@@ -2,16 +2,15 @@ package dev.rutvik.flutter_developer_tools.dart.hints
 
 import com.intellij.codeInsight.hints.declarative.*
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.DumbService
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.childrenOfType
-import com.jetbrains.lang.dart.analyzer.DartAnalysisServerService
 import com.jetbrains.lang.dart.psi.DartComponentName
 import com.jetbrains.lang.dart.psi.DartSimpleFormalParameter
 import com.jetbrains.lang.dart.psi.DartType
 import com.jetbrains.lang.dart.psi.DartVarAccessDeclaration
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 
 class DartDeclarativeTypeHintsProvider : InlayHintsProvider {
 
@@ -21,7 +20,10 @@ class DartDeclarativeTypeHintsProvider : InlayHintsProvider {
 
     private class Collector(private val file: PsiFile) : SharedBypassCollector {
 
-        override fun collectFromElement(element: PsiElement, sink: InlayTreeSink) {
+        override fun collectFromElement(element: PsiElement, sink: InlayTreeSink) =
+            guardExtension("Dart type hints", Unit) { collectHints(element, sink) }
+
+        private fun collectHints(element: PsiElement, sink: InlayTreeSink) {
             if (DumbService.isDumb(element.project)) return
 
             when (element) {
@@ -70,18 +72,8 @@ class DartDeclarativeTypeHintsProvider : InlayHintsProvider {
 
         private fun getTypeFromAnalyzer(identifier: DartComponentName): String? {
             val virtualFile = file.virtualFile ?: return null
-
-            val das = DartAnalysisServerService.getInstance(file.project)
-            if (!das.isServerProcessActive) return null
-
-            return try {
-                das.analysis_getHover(virtualFile, identifier.textOffset)
-                    .firstOrNull()?.staticType
-            } catch (e: ProcessCanceledException) {
-                throw e
-            } catch (_: Exception) {
-                null
-            }
+            val document = file.viewProvider.document ?: return null
+            return DartStaticTypeResolver.getStaticType(file.project, virtualFile, document, identifier.textOffset)
         }
     }
 }

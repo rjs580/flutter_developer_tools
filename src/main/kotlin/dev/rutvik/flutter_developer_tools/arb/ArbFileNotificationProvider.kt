@@ -8,6 +8,7 @@ import com.intellij.ui.EditorNotificationProvider
 import icons.FlutterIcons
 import io.flutter.sdk.FlutterSdk
 import io.flutter.utils.UIUtils
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 import java.util.function.Function
 import javax.swing.JComponent
 
@@ -29,16 +30,16 @@ class ArbFileNotificationProvider : EditorNotificationProvider {
         project: Project,
         file: VirtualFile
     ): Function<in FileEditor, out JComponent?>? {
-        // Check if the file is an .arb file or l10n.yaml file
-        if (file.extension != "arb" && file.name != "l10n.yaml") {
-            return null
-        }
+        return guardExtension("gen-l10n notification", null) {
+            // Check if the file is an .arb file or l10n.yaml file
+            if (file.extension != "arb" && file.name != "l10n.yaml") {
+                return null
+            }
 
-        // Check if Flutter SDK is available
-        val flutterSdk = FlutterSdk.getFlutterSdk(project) ?: return null
+            // Check if Flutter SDK is available
+            val flutterSdk = FlutterSdk.getFlutterSdk(project) ?: return null
 
-        return Function { fileEditor ->
-            FlutterArbActionsPanel(project, flutterSdk, file)
+            Function { _ -> guardExtension("gen-l10n notification", null) { FlutterArbActionsPanel(project, flutterSdk, file) } }
         }
     }
 
