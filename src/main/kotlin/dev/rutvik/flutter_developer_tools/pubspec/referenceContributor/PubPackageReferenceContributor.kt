@@ -23,7 +23,7 @@ import org.jetbrains.yaml.psi.YAMLScalar
 class PubPackageReferenceContributor : PsiReferenceContributor() {
 
     private val globalPathProvider by lazy {
-        PathReferenceManager.getInstance().globalWebPathReferenceProvider as GlobalPathReferenceProvider
+        PathReferenceManager.getInstance().globalWebPathReferenceProvider as? GlobalPathReferenceProvider
     }
 
     override fun registerReferenceProviders(registrar: PsiReferenceRegistrar) {
@@ -79,7 +79,7 @@ class PubPackageReferenceContributor : PsiReferenceContributor() {
             val references = mutableListOf<PsiReference>()
             val packageUrl = "https://pub.dev/packages/$pkgName"
 
-            globalPathProvider.createUrlReference(
+            globalPathProvider?.createUrlReference(
                 yamlKv,
                 packageUrl,
                 TextRange.allOf(pkgName),
@@ -117,7 +117,7 @@ class PubPackageReferenceContributor : PsiReferenceContributor() {
             val normalizedVersion = PubspecUtils.normalizeVersionString(versionText)
             val versionUrl = "https://pub.dev/packages/$pkgName/versions/$normalizedVersion"
 
-            globalPathProvider.createUrlReference(
+            globalPathProvider?.createUrlReference(
                 yamlScalar,
                 versionUrl,
                 TextRange.allOf(yamlScalar.text),

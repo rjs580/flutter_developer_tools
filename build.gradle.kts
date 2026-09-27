@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "dev.rutvik.flutter_developer_tools"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
@@ -45,6 +45,21 @@ intellijPlatform {
         }
 
         changeNotes = """
+        <h3>1.0.1</h3>
+        <h4>Fixed</h4>
+        <ul>
+            <li>Type hints no longer throw errors with Dart plugin 509 and newer, and work again there (#1)</li>
+            <li>Parameter name hints no longer throw errors on constructor calls with Dart plugin 508.1 and newer</li>
+            <li>If a Dart or Flutter plugin update breaks one of our features, that feature now turns off quietly instead of breaking highlighting in the whole editor</li>
+            <li>Package docs on hover no longer hang for up to 30 seconds when pub.dev can't be reached</li>
+            <li>Package upgrade quick fixes no longer start pub get while the IDE is holding its write lock</li>
+            <li>Saving breadcrumb settings can no longer clash with breadcrumbs being drawn</li>
+        </ul>
+        <h4>Added</h4>
+        <ul>
+            <li>A "Report on GitHub" button for plugin errors in the IDE error dialog</li>
+            <li>A new plugin icon, with a dark theme version</li>
+        </ul>
         <h3>1.0.0</h3>
         <p>First release.</p>
         <h4>Package management</h4>

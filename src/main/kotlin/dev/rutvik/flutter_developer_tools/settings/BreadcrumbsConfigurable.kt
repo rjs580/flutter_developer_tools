@@ -152,17 +152,13 @@ class BreadcrumbsConfigurable : Configurable {
     override fun apply() {
         settings.inferStandardWidgetNames = inferStandardWidgetNamesCheckbox.isSelected
 
-        // Apply icon mappings from table
-        settings.widgetIconMappings.clear()
-        settings.widgetIconMappings.putAll(tableModel.getIconMappings())
+        // Replace (not mutate) the collections: breadcrumbs and sticky lines read them on background threads.
+        settings.widgetIconMappings = LinkedHashMap(tableModel.getIconMappings())
 
         // Save custom widgets (those not in default list)
-        settings.customRecognizedWidgets.clear()
-        settings.customRecognizedWidgets.addAll(
-            tableModel.getWidgetNames().filter {
-                it !in BreadcrumbsSettingsState.DEFAULT_RECOGNIZED_WIDGETS
-            }
-        )
+        settings.customRecognizedWidgets = tableModel.getWidgetNames()
+            .filter { it !in BreadcrumbsSettingsState.DEFAULT_RECOGNIZED_WIDGETS }
+            .toCollection(LinkedHashSet())
 
         tableModel.markAsUnmodified()
     }

@@ -16,6 +16,7 @@ import com.jetbrains.lang.dart.analyzer.DartAnalysisServerService
 import com.jetbrains.lang.dart.ide.findUsages.DartServerFindUsagesHandler
 import com.jetbrains.lang.dart.psi.*
 import com.jetbrains.lang.dart.test.DartTestSourcesFilter
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 import java.awt.event.MouseEvent
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -34,7 +35,13 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
 
     override fun acceptsFile(file: PsiFile): Boolean = file is DartFile
 
-    override fun acceptsElement(element: PsiElement): Boolean {
+    override fun acceptsElement(element: PsiElement): Boolean =
+        guardExtension(ID, false) { isUsagesTarget(element) }
+
+    override fun getHint(element: PsiElement, file: PsiFile): String? =
+        guardExtension(ID, null) { computeHint(element) }
+
+    private fun isUsagesTarget(element: PsiElement): Boolean {
         if (!element.manager.isInProject(element)) return false
 
         return when {
@@ -78,7 +85,7 @@ class DartReferencesCodeVisionProvider : ReferencesCodeVisionProvider() {
         }
     }
 
-    override fun getHint(element: PsiElement, file: PsiFile): String? {
+    private fun computeHint(element: PsiElement): String? {
         ProgressManager.checkCanceled()
 
         if (DumbService.isDumb(element.project)) {

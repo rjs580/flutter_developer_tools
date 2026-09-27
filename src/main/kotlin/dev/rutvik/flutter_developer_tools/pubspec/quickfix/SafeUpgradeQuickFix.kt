@@ -34,6 +34,9 @@ class SafeUpgradeQuickFix(
 
     override fun getFamilyName(): String = "Upgrade package safely"
 
+    // The edit takes its own write action; pub get must not start a process under the write lock.
+    override fun startInWriteAction(): Boolean = false
+
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile?): Boolean {
         if (!PubspecUtils.isPubspecFile(file)) return false
 
@@ -99,6 +102,9 @@ class FullUpgradeQuickFix(
     }
 
     override fun getFamilyName(): String = "Upgrade package to latest"
+
+    // The edit takes its own write action; pub get must not start a process under the write lock.
+    override fun startInWriteAction(): Boolean = false
 
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile?): Boolean {
         return PubspecUtils.isPubspecFile(file)

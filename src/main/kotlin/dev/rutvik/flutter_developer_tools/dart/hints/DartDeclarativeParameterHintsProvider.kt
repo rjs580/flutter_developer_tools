@@ -10,6 +10,7 @@ import com.intellij.psi.util.childrenOfType
 import com.jetbrains.lang.dart.ide.info.DartFunctionDescription
 import com.jetbrains.lang.dart.psi.*
 import com.jetbrains.lang.dart.util.DartResolveUtil
+import dev.rutvik.flutter_developer_tools.utils.guardExtension
 
 private val PARAM_WHITESPACE_REGEX = Regex("\\s+")
 private val PARAM_IDENTIFIER_REGEX = Regex("[A-Za-z_$][A-Za-z0-9_$]*")
@@ -22,7 +23,10 @@ class DartDeclarativeParameterHintsProvider : InlayHintsProvider {
 
     private class Collector : SharedBypassCollector {
 
-        override fun collectFromElement(element: PsiElement, sink: InlayTreeSink) {
+        override fun collectFromElement(element: PsiElement, sink: InlayTreeSink) =
+            guardExtension("Dart parameter hints", Unit) { collectHints(element, sink) }
+
+        private fun collectHints(element: PsiElement, sink: InlayTreeSink) {
             if (DumbService.isDumb(element.project)) return
 
             val arguments = when (element) {
@@ -60,7 +64,9 @@ class DartDeclarativeParameterHintsProvider : InlayHintsProvider {
                     is DartCallExpression -> DartFunctionDescription.tryGetDescription(element)
                     is DartNewExpression -> {
                         val type = element.type ?: return null
-                        val referenceExpressions = element.referenceExpressionList
+                        // Direct children only: the named-constructor reference after `Type.`. Avoids
+                        // getReferenceExpressionList(), which Dart plugin 508.1.0 replaced with getReferenceExpression().
+                        val referenceExpressions = element.childrenOfType<DartReferenceExpression>()
                         val psiElement = if (referenceExpressions.isEmpty()) {
                             type.referenceExpression
                         } else {
